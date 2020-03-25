@@ -127,8 +127,8 @@ class MARiA_Catch(threading.Thread):
 	def readpause(self):
 		return self.pause_flag
 
-	def readdata(self):
-		return self.data
+	def readdata(self,dpos):
+		return self.data[dpos:]
 
 	def setdata(self, str):
 		self.data = str
@@ -171,6 +171,7 @@ class MARiA_Frame(wx.Frame):
 	Speed		= 100
 	ID_TIMER	= 1
 	buf			= ""
+	buf_size	= 0
 	prev_num	= 0
 	logout_mode	= 0
 	tmp_id		= 0
@@ -305,13 +306,16 @@ class MARiA_Frame(wx.Frame):
 		if event.GetId() == MARiA_Frame.ID_TIMER:
 			if self.timerlock == 0:
 				self.timerlockcnt = 0
-				data = self.th.readdata()
-				if data == "":
-					#何もないときに処理する
-					self.GetPacket()
-				else:
+				data = self.th.readdata(self.buf_size)
+				if data != "":
+					print("buf_add\n")
 					self.buf += data
-					self.th.setdata("")
+					self.buf_size += len(data)
+					self.GetPacket()
+					if self.buf_size >= 2<<16:
+						print("Buffer over Clear\n")
+						self.th.setdata("")
+						self.buf_size = 0
 			else:
 				#ロックされてるときはカウンタをあげる
 				self.timerlockcnt += 1
@@ -370,8 +374,8 @@ class MARiA_Frame(wx.Frame):
 		self.timerlock = 1
 		while not buf == "":
 			lasttick = gettick()
-//			if lasttick - tick > 90:	#90msを超えたら再帰
-//				break
+#			if lasttick - tick > 90:	#90msを超えたら再帰
+#				break
 			total_len = len(buf)
 			num = RFIFOW(buf,0)
 			if num in Packetlen.keys():

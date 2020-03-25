@@ -762,6 +762,9 @@ class MARiA_Frame(wx.Frame):
 				+ 6*(dx<0  and dy==0) \
 				+ 7*(dx<0  and dy<0)
 			dist = abs(dx) if abs(dx) > abs(dy) else abs(dy)
+			chrdata['x'] = x
+			chrdata['y'] = y
+			self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
 			if chrdata['aid'] == aid:
 				self.text.AppendText("pushpc {}, {};\n".format(dir, dist))
 		elif num == 0x08a:	#nomalattack

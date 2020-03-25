@@ -11,7 +11,7 @@ from enum import IntEnum
 
 MARiA_MAJOR_VERSION = 0
 MARiA_MINOR_VERSION = 0
-MARiA_MAJOR_REVISION = 2
+MARiA_MAJOR_REVISION = 4
 MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
 
 Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
@@ -79,7 +79,8 @@ def read_config_db():
 			else:
 				l = s_line.split(' ')
 				if len(l) >= 2:
-					Configuration[str(l[0])] = int(l[1])
+					if l[0] in Configuration:
+						Configuration[str(l[0])] = int(l[1])
 
 def read_packet_db():
 	path = './PacketLength.txt'
@@ -116,6 +117,33 @@ def read_ignore_db():
 						IgnorePacketAll = int(l[1])
 					else:
 						IgnorePacket[int(l[0],16)] = int(l[1])
+
+def save_configuration():
+	path = './Config.txt'
+
+	savedata = []
+	with open(path) as f:
+		for s_line in f:
+			if s_line[:2] == "//":
+				savedata.append(s_line)
+			elif s_line[:1] == "\n":
+				savedata.append(s_line)
+			else:
+				sp = s_line.split(' ')
+				if len(sp) >= 2:
+					if sp[0] in Configuration:
+						sp[1] = str(Configuration[sp[0]])
+				sp2 = ' '.join(sp)
+				savedata.append(sp2)
+	sp = '\n'.join(savedata)
+#	str_list = list(Configuration.items())
+#	map_list = map(str, str_list)
+#	sp = '\n'.join(map_list)
+#	sp = ''.join(list(Configuration.items()))
+#	sp = sp.replace(',','\n')
+	with open(path, mode="w") as f:
+		f.write(sp)
+#	Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
 
 class MARiA_Catch(threading.Thread):
 	def __init__(self):
@@ -170,7 +198,6 @@ class MARiA_Catch(threading.Thread):
 	def OnCatch(self, packet):
 		if self.pause_flag == False:
 			if self.is_this_target_packet(packet) == True:
-				print(packet.show)
 				if Raw in packet:
 					raw = packet.lastlayer()
 					self.data.append(self.OnHexEx(raw))
@@ -180,7 +207,7 @@ class MARiA_Catch(threading.Thread):
 
 class MARiA_Frame(wx.Frame):
 	Started		= False
-	Speed		= 100
+	Speed		= 25
 	ID_TIMER	= 1
 	buf			= ""
 	bufcnt		= 0
@@ -199,7 +226,8 @@ class MARiA_Frame(wx.Frame):
 			parent, 
 			id,
 			title=title, 
-			size=(800,500))
+			pos=(Configuration['Window_XPos'],Configuration['Window_YPos']),
+			size=(Configuration['Width'],Configuration['Height']))
 
 		self.timer = wx.Timer(self, MARiA_Frame.ID_TIMER)
 
@@ -282,6 +310,8 @@ class MARiA_Frame(wx.Frame):
 		self.button.Bind(wx.EVT_BUTTON, self.OnStart)
 		self.Bind(wx.EVT_TIMER, self.OnTimer, id=MARiA_Frame.ID_TIMER)
 
+		self.Bind(wx.EVT_CLOSE, self.OnClose)
+
 		icon = wx.Icon(r"./icon.ico", wx.BITMAP_TYPE_ICO)
 		self.SetIcon(icon)
 
@@ -295,7 +325,7 @@ class MARiA_Frame(wx.Frame):
 
 		p1.SetSizer(vbox)
 		p2.SetSizer(vbox2)
-		self.Centre()
+#		self.Centre()
 		self.Show(True)
 
 	def OnStart(self, event):
@@ -324,7 +354,6 @@ class MARiA_Frame(wx.Frame):
 					self.buf += data
 					self.GetPacket()
 					if self.bufcnt == self.th.readcnt():
-						print("data clear")
 						self.th.setdata()
 						self.bufcnt = 0
 			else:
@@ -337,6 +366,16 @@ class MARiA_Frame(wx.Frame):
 					print("DeadLock buf Clear\n")
 		else:
 			event.Skip()
+	def OnClose(self, event):
+		pos = self.GetScreenPosition()
+		size = self.GetSize()
+		Configuration["Window_XPos"] = pos[0]
+		Configuration["Window_YPos"] = pos[1]
+		Configuration["Width"] = size[0]
+		Configuration["Height"] = size[1]
+		save_configuration()
+		event.Skip()
+
 	def OnReloadPacket(self, event):
 		global Packetlen
 		Packetlen.clear()
@@ -444,7 +483,6 @@ class MARiA_Frame(wx.Frame):
 			if num == 0x229:
 				if total_len >= packet_len*2+10:
 					if buf[packet_len*2:packet_len*2+10] == "0000000000":
-						self.btext.AppendText("\nlogout-mode 00 00 00 00 00 catch!")
 						packet_len += 5
 				else:
 					self.logout_mode = 1
@@ -1285,11 +1323,12 @@ class MARiA_Frame(wx.Frame):
 			pass
 		elif num == 0x1d7:	#spritechange
 			pass
-		else:
+		elif Configuration['Show_OtherPacket'] == 1:
 			self.text.AppendText("@packet "+ n + ".\n")
 
 app = wx.App()
 read_packet_db()
 read_ignore_db()
+read_config_db()
 MARiA_Frame(None, -1, "MARiA  "+MARiA_VERSION)
 app.MainLoop()

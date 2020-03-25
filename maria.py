@@ -11,7 +11,7 @@ from enum import IntEnum
 
 MARiA_MAJOR_VERSION = 0
 MARiA_MINOR_VERSION = 0
-MARiA_MAJOR_REVISION = 4
+MARiA_MAJOR_REVISION = 7
 MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
 
 Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
@@ -136,14 +136,8 @@ def save_configuration():
 				sp2 = ' '.join(sp)
 				savedata.append(sp2)
 	sp = '\n'.join(savedata)
-#	str_list = list(Configuration.items())
-#	map_list = map(str, str_list)
-#	sp = '\n'.join(map_list)
-#	sp = ''.join(list(Configuration.items()))
-#	sp = sp.replace(',','\n')
 	with open(path, mode="w") as f:
 		f.write(sp)
-#	Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
 
 class MARiA_Catch(threading.Thread):
 	def __init__(self):
@@ -325,7 +319,6 @@ class MARiA_Frame(wx.Frame):
 
 		p1.SetSizer(vbox)
 		p2.SetSizer(vbox2)
-#		self.Centre()
 		self.Show(True)
 
 	def OnStart(self, event):
@@ -728,6 +721,8 @@ class MARiA_Frame(wx.Frame):
 				self.text.AppendText("announce {}, 0x10;\n".format(s))
 			elif color == 0x73737373:	#ssss -> WoE
 				self.text.AppendText("announce {}, 0x20;\n".format(s))
+			elif color == 0x6c6f6f74:	#tool
+				self.text.AppendText("announce {}, 0x30;\n".format(s))
 			elif color == 0:
 				self.text.AppendText("announce {}, 0;\n".format(s))
 			else:

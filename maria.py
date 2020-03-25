@@ -120,7 +120,9 @@ def read_ignore_db():
 class MARiA_Catch(threading.Thread):
 	def __init__(self):
 		threading.Thread.__init__(self)
-		self.data = ""
+		self.data = []
+		self.data.append("")
+		self.datacnt = 0
 		self.port = 5121
 		self.pause_flag = True
 
@@ -128,10 +130,18 @@ class MARiA_Catch(threading.Thread):
 		return self.pause_flag
 
 	def readdata(self,dpos):
-		return self.data[dpos:]
+		if len(self.data) > 1:
+			return self.data[dpos+1]
+		else:
+			return ""
 
-	def setdata(self, str):
-		self.data = str
+	def setdata(self):
+		self.data = []
+		self.data.append("")
+		self.datacnt = 0
+
+	def readcnt(self):
+		return self.datacnt
 
 	def setport(self, num):
 		self.port = num
@@ -160,9 +170,11 @@ class MARiA_Catch(threading.Thread):
 	def OnCatch(self, packet):
 		if self.pause_flag == False:
 			if self.is_this_target_packet(packet) == True:
+				print(packet.show)
 				if Raw in packet:
 					raw = packet.lastlayer()
-					self.data += self.OnHexEx(raw)
+					self.data.append(self.OnHexEx(raw))
+					self.datacnt += 1
 		else:
 			pass
 
@@ -171,7 +183,7 @@ class MARiA_Frame(wx.Frame):
 	Speed		= 100
 	ID_TIMER	= 1
 	buf			= ""
-	buf_size	= 0
+	bufcnt		= 0
 	prev_num	= 0
 	logout_mode	= 0
 	tmp_id		= 0
@@ -306,16 +318,15 @@ class MARiA_Frame(wx.Frame):
 		if event.GetId() == MARiA_Frame.ID_TIMER:
 			if self.timerlock == 0:
 				self.timerlockcnt = 0
-				data = self.th.readdata(self.buf_size)
+				data = self.th.readdata(self.bufcnt)
 				if data != "":
-					print("buf_add\n")
+					self.bufcnt += 1
 					self.buf += data
-					self.buf_size += len(data)
 					self.GetPacket()
-					if self.buf_size >= 2<<16:
-						print("Buffer over Clear\n")
-						self.th.setdata("")
-						self.buf_size = 0
+					if self.bufcnt == self.th.readcnt():
+						print("data clear")
+						self.th.setdata()
+						self.bufcnt = 0
 			else:
 				#ロックされてるときはカウンタをあげる
 				self.timerlockcnt += 1

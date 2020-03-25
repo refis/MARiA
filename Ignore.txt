@@ -1,0 +1,63 @@
+// Ignore Packet order list
+//
+// note:
+//   Packet type
+//   type:
+//        0x1  skip binary window only
+//        0x2  skip script window only
+//        0x3  both
+
+0xfff 1 //allskip_binary
+
+0x080 1 //clear_unit
+0x087 1 //walk
+0x088 1 //fixpos
+0x08d 1 //globalmessage
+0x08e 1 //selfmessage
+0x196 1 //status_load
+0x229 1 //changeoption
+0x283 1 //connect ok
+0x983 1 //status_change
+0x9ca 1 //skill_unit
+0x9fd 1 //move
+0x9fe 1 //spawn
+0x9ff 1 //idle
+0xa36 1 //hp_info_tiny
+
+0x000 3 //unknown
+0x07f 3 //server_tick
+0x095 3 //charname
+0x09c 3 //changedir
+0x09d 3 //iteminsight
+0x09e 3 //dropflooritem
+0x0a1 3 //clearflooritem
+0x0b0 3 //updatestatus
+0x101 3 //partyoption
+0x110 3 //skillfail
+0x120 3 //clearskillunit
+0x131 3 //vendingboard
+0x187 3 //alive
+0x1eb 3 //guildmemberxy
+0x1f2 3 //guildmemberlogin
+0x201 3 //friend
+0x227 3 //gameguard
+0x2a2 3 //mercstatus
+0x2a3 3 //gameguard_key
+0x2cd 3 //mdcreated
+0x2ce 3 //mdchangestatus
+0x2eb 3 //auth ok
+0x440 3 //mshield
+0x80e 3 //hpmeter
+0x814 3 //buyingboard
+0x977 3 //hp_info
+0xa27 3 //n_heal
+0xa30 3 //charname
+0xa36 3 //hp_info_tiny
+0xa3b 3 //hateffect
+0xadc 3 //config
+0xadd 3 //dropflooritem
+0xae4 3 //partymaininfo
+0xae5 3 //partyinfo
+0xaf7 3 //solvedcharname
+0xafe 3 //killcntupdate
+0xaff 3 //questlist

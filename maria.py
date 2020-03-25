@@ -4,10 +4,17 @@ import wx
 import threading
 import binascii
 import time
+import socket
 import traceback
 from scapy.all import *
 from enum import IntEnum
 
+MARiA_MAJOR_VERSION = 0
+MARiA_MINOR_VERSION = 0
+MARiA_MAJOR_REVISION = 2
+MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
+
+Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
 dummy_mob = ["unknown.gat",0,0,"No Mob Name",0,0,0]
 dummy_npc = ["unknown.gat",0,0,0,"No NPC Name",0,0]
 dummy_chr = {'Char_id': 0, 'Char_Name': 0, "BaseExp": -1, "JobExp": -1, "Zeny": -1}
@@ -25,6 +32,9 @@ npcdata.setdefault('5121',{})
 npcdata['5121'].setdefault(0,{})
 npcdata['5121'][0] = dummy_npc
 warpnpc = {}
+
+TargetIP = 0
+IgnorePacketAll = 0
 
 class NPC(IntEnum):
 	MAP  = 0
@@ -46,6 +56,7 @@ class MOB(IntEnum):
 
 MAX_PACKET_DB = 0x0b90
 
+RFIFOS = lambda p, pos1, pos2: p[pos1*2:pos2*2]
 RFIFOB = lambda p, pos: int(p[pos*2:pos*2+2],16)
 RFIFOW = lambda p, pos: int(p[pos*2+2:pos*2+4]+p[pos*2:pos*2+2],16)
 RFIFOL = lambda p, pos: int(p[pos*2+6:pos*2+8]+p[pos*2+4:pos*2+6]+p[pos*2+2:pos*2+4]+p[pos*2:pos*2+2],16)
@@ -55,6 +66,20 @@ RFIFOPOSY = lambda p, pos: ((int(p[pos*2+2:pos*2+4],16)&0x3f)<<4) + ((int(p[pos*
 RFIFOPOSD = lambda p, pos: (int(p[pos*2+4:pos*2+6],16)&0xF)
 
 gettick = lambda : time.time()
+
+def read_config_db():
+	path = './Config.txt'
+
+	with open(path) as f:
+		for s_line in f:
+			if s_line[:2] == "//":
+				continue
+			elif s_line[:1] == "\n":
+				continue
+			else:
+				l = s_line.split(' ')
+				if len(l) >= 2:
+					Configuration[str(l[0])] = int(l[1])
 
 def read_packet_db():
 	path = './PacketLength.txt'
@@ -86,7 +111,11 @@ def read_ignore_db():
 			else:
 				l = s_line.split(' ')
 				if len(l) >= 2:
-					IgnorePacket[int(l[0],16)] = int(l[1])
+					if int(l[0],16) == 0xfff:
+						global IgnorePacketAll
+						IgnorePacketAll = int(l[1])
+					else:
+						IgnorePacket[int(l[0],16)] = int(l[1])
 
 class MARiA_Catch(threading.Thread):
 	def __init__(self):
@@ -108,7 +137,7 @@ class MARiA_Catch(threading.Thread):
 		self.port = num
 
 	def run(self):
-		sniff (filter = "ip host 192.168.1.3", prn=self.OnCatch, count=0)
+		sniff (filter = "ip host "+TargetIP, prn=self.OnCatch, count=0)
 
 	def c_pause(self,flag):
 		self.pause_flag = flag
@@ -145,6 +174,8 @@ class MARiA_Frame(wx.Frame):
 	prev_num	= 0
 	logout_mode	= 0
 	tmp_id		= 0
+	timerlock	= 0
+	timerlockcnt= 0
 	packet_lasttick = 0
 	th = MARiA_Catch()
 	th.setDaemon(True)
@@ -179,6 +210,8 @@ class MARiA_Frame(wx.Frame):
 
 		clearscript = edit.Append(-1, "スクリプト窓クリア")
 		self.Bind(wx.EVT_MENU, self.OnClearScript, clearscript)
+
+		edit.AppendSeparator()
 
 		menubar.Append(file, '&File')
 		menubar.Append(edit, '&Edit')
@@ -239,6 +272,14 @@ class MARiA_Frame(wx.Frame):
 		icon = wx.Icon(r"./icon.ico", wx.BITMAP_TYPE_ICO)
 		self.SetIcon(icon)
 
+		self.text.AppendText("setup...\n")
+
+		host = socket.gethostname()
+		global TargetIP
+		TargetIP = socket.gethostbyname(host)
+
+		self.text.AppendText("MARiA is Activeted, Target IP: " +TargetIP+ "\n")
+
 		p1.SetSizer(vbox)
 		p2.SetSizer(vbox2)
 		self.Centre()
@@ -262,13 +303,23 @@ class MARiA_Frame(wx.Frame):
 
 	def OnTimer(self, event):
 		if event.GetId() == MARiA_Frame.ID_TIMER:
-			data = self.th.readdata()
-			if data == "":
-				#何もないときに処理する
-				self.GetPacket()
+			if self.timerlock == 0:
+				self.timerlockcnt = 0
+				data = self.th.readdata()
+				if data == "":
+					#何もないときに処理する
+					self.GetPacket()
+				else:
+					self.buf += data
+					self.th.setdata("")
 			else:
-				self.buf += data
-				self.th.setdata("")
+				#ロックされてるときはカウンタをあげる
+				self.timerlockcnt += 1
+				if self.timerlockcnt >= 10:	#デッドロックの予感
+					self.timerlock		= 0
+					self.timerlockcnt	= 0
+					self.buf = ""
+					print("DeadLock buf Clear\n")
 		else:
 			event.Skip()
 	def OnReloadPacket(self, event):
@@ -280,8 +331,10 @@ class MARiA_Frame(wx.Frame):
 
 	def OnReloadIgnore(self, event):
 		global IgnorePacket
+		global IgnorePacketAll
 		IgnorePacket.clear()
 		IgnorePacket = {}
+		IgnorePacketAll = 0
 		read_ignore_db()
 		self.text.AppendText("@reload ignorepacket done.\n")
 
@@ -313,12 +366,12 @@ class MARiA_Frame(wx.Frame):
 
 	def GetPacket(self):
 		buf = self.buf
-#		if not buf == "":
 		tick = gettick()
+		self.timerlock = 1
 		while not buf == "":
 			lasttick = gettick()
-			if lasttick - tick > 90:	#90msを超えたら再帰
-				break
+//			if lasttick - tick > 90:	#90msを超えたら再帰
+//				break
 			total_len = len(buf)
 			num = RFIFOW(buf,0)
 			if num in Packetlen.keys():
@@ -359,53 +412,52 @@ class MARiA_Frame(wx.Frame):
 				elif self.packet_lasttick == 0:
 					self.packet_lasttick = tick
 				break
-			else:
-				if self.logout_mode >= 1:
-					if buf[:4] == "0000":
-						if total_len >= 10:
-							if buf[:10] == "0000000000":
-								self.btext.AppendText("\nlogout-mode 00 00 00 00 00 catch!")
-								if packet_len*2+10 < total_len:
-									self.buf = buf = buf[10:total_len]
-								else:
-									self.buf = buf = ''
-							else:
-								self.logout_mode = 0
-						break
-					else:
-						self.logout_mode = 0
-				if num == 0x229:
-					if total_len >= packet_len*2+10:
-						if buf[packet_len*2:packet_len*2+10] == "0000000000":
+			if self.logout_mode >= 1:
+				if buf[:4] == "0000":
+					if total_len >= 10:
+						if buf[:10] == "0000000000":
 							self.btext.AppendText("\nlogout-mode 00 00 00 00 00 catch!")
-							packet_len += 5
-					else:
-						self.logout_mode = 1
-				if num == 0x0000:
-					self.btext.AppendText("\n0x0000 catch, check PacketLength.txt. prev: "+format(self.prev_num, '#06x'))
-				ignore_type = 0
-				if num in IgnorePacket.keys():
-					ignore_type = IgnorePacket[num]
-				if ignore_type&1 == 0:
-					i = 0
-					if self.btext.GetValue() != '':
-						self.btext.AppendText('\n')
-					self.btext.AppendText(format(num, '#06x')+": ")
-					while i < packet_len*2:
-						self.btext.AppendText(buf[i:i+2]+ ' ')
-						i += 2
-				if ignore_type&2 == 0:
-					try:
-						if packet_len >= 2:
-							self.ReadPacket(num, packet_len)
-					except Exception as e:
-						print(traceback.format_exc())
-						self.buf = buf = ''
-				self.prev_num = num
-				if packet_len*2 < total_len:
-					self.buf = buf = buf[packet_len*2:total_len]
+							if packet_len*2+10 < total_len:
+								self.buf = buf = buf[10:total_len]
+							else:
+								self.buf = buf = ''
+						else:
+							self.logout_mode = 0
+					break
 				else:
+					self.logout_mode = 0
+			if num == 0x229:
+				if total_len >= packet_len*2+10:
+					if buf[packet_len*2:packet_len*2+10] == "0000000000":
+						self.btext.AppendText("\nlogout-mode 00 00 00 00 00 catch!")
+						packet_len += 5
+				else:
+					self.logout_mode = 1
+			ignore_type = 0
+			if num in IgnorePacket.keys():
+				ignore_type = IgnorePacket[num]
+			if ignore_type&1 == 0 and IgnorePacketAll&1 == 0:
+				i = 0
+				if self.btext.GetValue() != '':
+					self.btext.AppendText('\n')
+				self.btext.AppendText(format(num, '#06x')+": ")
+				while i < packet_len*2:
+					self.btext.AppendText(buf[i:i+2]+ ' ')
+					i += 2
+			if ignore_type&2 == 0 and IgnorePacketAll&2 == 0:
+				try:
+					if packet_len >= 2:
+						self.ReadPacket(num, packet_len)
+				except Exception as e:
+					print(traceback.format_exc())
 					self.buf = buf = ''
+					break
+			self.prev_num = num
+			if packet_len*2 < total_len:
+				self.buf = buf = buf[packet_len*2:total_len]
+			else:
+				self.buf = buf = ''
+		self.timerlock = 0
 
 	def ReadPacket(self, num, p_len):
 		n = hex(num)
@@ -447,7 +499,19 @@ class MARiA_Frame(wx.Frame):
 					elif type == 6:
 						if self.port.GetValue() in npcdata.keys():
 							if aid in npcdata[self.port.GetValue()].keys():
-								pass
+								if npcdata[p][aid][NPC.CLASS] != view:
+									self.text.AppendText("@viewchange(setnpcdisplay \"{}\", {};\t// {}\n".format(s, view, aid))
+								elif npcdata[p][aid][NPC.OPTION] != option:
+									s2 = "@viewchange("
+									if npcdata[p][aid][NPC.OPTION] == 2 or option == 2:
+										s2 += "hideonnpc" if option == 2 else "hideoffnpc"
+									elif npcdata[p][aid][NPC.OPTION] == 4 or option == 4:
+										s2 += "cloakonnpc" if option == 4 else "cloakoffnpc"
+									else:
+										s2 += "hideoffnpc"
+									s2 += " \""+s+"\";)\t// "+str(aid)
+									npcdata[p][aid][NPC.OPTION] = option
+									self.text.AppendText(s2+"\n")
 							else:
 								self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\tscript\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
 								npcdata[p][aid] = [m,x,y,dir,s,view,option]
@@ -491,7 +555,19 @@ class MARiA_Frame(wx.Frame):
 					elif type == 6:
 						if p in npcdata.keys():
 							if aid in npcdata[p].keys():
-								pass
+								if npcdata[p][aid][NPC.CLASS] != view:
+									self.text.AppendText("@viewchange(setnpcdisplay \"{}\", {};\t// {}\n".format(s, view, aid))
+								elif npcdata[p][aid][NPC.OPTION] != option:
+									s2 = "@viewchange("
+									if npcdata[p][aid][NPC.OPTION] == 2 or option == 2:
+										s2 += "hideonnpc" if option == 2 else "hideoffnpc"
+									elif npcdata[p][aid][NPC.OPTION] == 4 or option == 4:
+										s2 += "cloakonnpc" if option == 4 else "cloakoffnpc"
+									else:
+										s2 += "hideoffnpc"
+									s2 += " \""+s+"\";)\t// "+str(aid)
+									npcdata[p][aid][NPC.OPTION] = option
+									self.text.AppendText(s2+"\n")
 							else:
 								self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\tscript\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
 								npcdata[p][aid] = [m,x,y,dir,s,view,option]
@@ -551,6 +627,8 @@ class MARiA_Frame(wx.Frame):
 			self.text.AppendText("next;\n")
 		elif num == 0x0b6:	#close
 			self.text.AppendText("close;\n")
+		elif num == 0x8d6:	#clear
+			self.text.AppendText("clear;\n")
 		elif num == 0x0b7:	#select
 			s = buf[8*2:p_len*2-4]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
@@ -569,6 +647,18 @@ class MARiA_Frame(wx.Frame):
 			s = s.replace("\0","")
 			type	= RFIFOB(buf,66)
 			self.text.AppendText("cutin \""+s+"\", "+str(type)+";\n")
+		elif num == 0x1b0:	#classchange
+			aid		= RFIFOL(buf,2)
+			type	= RFIFOB(buf,6)
+			class_	= RFIFOL(buf,7)
+			p		= self.port.GetValue()
+			if p in npcdata.keys():
+				if aid in npcdata[p].keys():
+					self.text.AppendText("setnpcdisplay \"{}\",{};\t// {}\n".format(npcdata[p][aid][NPC.NAME], class_, aid))
+					npcdata[p][aid][NPC.CLASS] = class_
+			elif p in mobdata.keys():
+				if aid in mobdata[p].keys():
+					self.text.AppendText("@classchange(src: \"{}\"({}), class: {}, type: {})\n".format(mobdata[p][aid][MOB.NAME],aid,class_,type))
 		elif num == 0x2b3 or num == 0x9f9 or num == 0xb0c:	#quest_add
 			quest_id = RFIFOL(buf,2)
 			state	 = RFIFOB(buf,6)
@@ -580,6 +670,7 @@ class MARiA_Frame(wx.Frame):
 			color		= RFIFOL(buf,4)
 			s = buf[4*2:p_len*2-2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
+			s = s.replace(chrdata['name'],"\"+strcharinfo(0)+\"")
 			if color == 0x65756c62:		#blue
 				self.text.AppendText("announce {}, 0x10;\n".format(s))
 			elif color == 0x73737373:	#ssss -> WoE
@@ -597,6 +688,7 @@ class MARiA_Frame(wx.Frame):
 			fontY		= RFIFOW(buf,14)
 			s = buf[16*2:p_len*2-2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
+			s = s.replace(chrdata['name'],"\"+strcharinfo(0)+\"")
 			color = format(color, '#08x')
 			if fontType == 400 and fontSize == 12 and fontAlign == 0 and fontY == 0:
 				self.text.AppendText("announce \"{}\", 0x9, {};\n".format(s, color))
@@ -666,7 +758,7 @@ class MARiA_Frame(wx.Frame):
 			p		= self.port.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
-					self.text.AppendText("@skillcasting(src: \"{}\"({}), dst: {}, skill: ({}), pl: {}, casttime: {})\n".format(mobdata[p][aid][MOB.NAME], aid, dst, skill_id, tick))
+					self.text.AppendText("@skillcasting(src: \"{}\"({}), dst: {}, skill: ({}), casttime: {})\n".format(mobdata[p][aid][MOB.NAME], aid, dst, skillid, tick))
 		elif num == 0x1de:	#skill_damage
 			skillid	= RFIFOW(buf,2)
 			aid		= RFIFOL(buf,4)
@@ -753,6 +845,8 @@ class MARiA_Frame(wx.Frame):
 						s += "hideonnpc" if option == 2 else "hideoffnpc"
 					elif npcdata[p][aid][NPC.OPTION] == 4 or option == 4:
 						s += "cloakonnpc" if option == 4 else "cloakoffnpc"
+					else:
+						s += "hideoffnpc"
 					s += " \""+npcdata[p][aid][NPC.NAME]+"\";\t// "+str(aid)
 					npcdata[p][aid][NPC.OPTION] = option
 					self.text.AppendText(s+"\n")
@@ -800,6 +894,14 @@ class MARiA_Frame(wx.Frame):
 			if p in npcdata.keys():
 				if aid in npcdata[p].keys():
 					self.text.AppendText("waitingroom \""+s+"\", 0;\t// " +str(aid)+ "\n")
+		elif num == 0x192:	#mapcell
+			x		= RFIFOW(buf,2)
+			y		= RFIFOW(buf,4)
+			type	= RFIFOW(buf,6)
+			s = buf[8*2:p_len*2-2]
+			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
+			s = s.replace("\0","")
+			self.text.AppendText("setcell \"{}\", {}, {}, {};\n".format(s, x, y, type))
 		elif num == 0x1d3:	#soundeffect
 			s = buf[2*2:26*2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
@@ -949,8 +1051,9 @@ class MARiA_Frame(wx.Frame):
 			chrdata['y'] = y
 			self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
 		elif num == 0x08d:	#message
-			s = buf[8*2:p_len*2-2]
+			s = buf[8*2:p_len*2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
+			s = s.replace("\0","")
 			s = s.replace(chrdata['name'],"\"+strcharinfo(0)+\"")
 			aid	= RFIFOL(buf,4)
 			p	= self.port.GetValue()
@@ -965,6 +1068,7 @@ class MARiA_Frame(wx.Frame):
 		elif num == 0x08e:	#message
 			s = buf[4*2:p_len*2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
+			s = s.replace("\0","")
 			s = s.replace(chrdata['name'],"\"+strcharinfo(0)+\"")
 			self.text.AppendText("unittalk getcharid(3),\""+s+"\",1;\t// self:hidden\n")
 		elif num == 0x2c1:	#multicolormessage
@@ -1000,7 +1104,7 @@ class MARiA_Frame(wx.Frame):
 		elif num == 0x0af or num == 0x229:	#delitem
 			idx		= RFIFOW(buf,2)
 			amount	= RFIFOW(buf,4)
-			self.text.AppendText("getitem idx:{},{};\n".format(idx,amount))
+			self.text.AppendText("delitem idx:{},{};\n".format(idx,amount))
 		elif num == 0x7fa:	#delitem
 			idx		= RFIFOW(buf,4)
 			amount	= RFIFOW(buf,6)
@@ -1172,5 +1276,5 @@ class MARiA_Frame(wx.Frame):
 app = wx.App()
 read_packet_db()
 read_ignore_db()
-MARiA_Frame(None, -1, "MARiA")
+MARiA_Frame(None, -1, "MARiA  "+MARiA_VERSION)
 app.MainLoop()

@@ -1,0 +1,5 @@
+Window_XPos 33
+Window_YPos 100
+Width 821
+Height 906
+Show_OtherPacket 0

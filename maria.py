@@ -1101,6 +1101,12 @@ class MARiA_Frame(wx.Frame):
 			chrdata['x'] = x
 			chrdata['y'] = y
 			self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
+		elif num == 0x2eb or num == 0xa18:	#authok
+			x	= RFIFOPOSX(buf,6)
+			y	= RFIFOPOSY(buf,6)
+			chrdata['x'] = x
+			chrdata['y'] = y
+			self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
 		elif num == 0x08d:	#message
 			s = buf[8*2:p_len*2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')

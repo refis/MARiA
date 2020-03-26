@@ -7,7 +7,8 @@ import time
 import socket
 import traceback
 from scapy.all import *
-from enum import IntEnum
+
+import const
 
 MARiA_MAJOR_VERSION = 0
 MARiA_MINOR_VERSION = 0
@@ -32,30 +33,14 @@ npcdata.setdefault('5121',{})
 npcdata['5121'].setdefault(0,{})
 npcdata['5121'][0] = dummy_npc
 warpnpc = {}
-skillname = [""] * 10020
 
 TargetIP = 0
 IgnorePacketAll = 0
 
-class NPC(IntEnum):
-	MAP  = 0
-	POSX = 1
-	POSY = 2
-	POSD = 3
-	NAME = 4
-	CLASS = 5
-	OPTION = 6
-
-class MOB(IntEnum):
-	MAP  = 0
-	POSX = 1
-	POSY = 2
-	NAME = 3
-	CLASS = 4
-	SPEED = 5
-	MAXHP = 6
-
 MAX_PACKET_DB = 0x0b90
+
+SkillName = const.SKILLNAME
+EFST = const.EFST
 
 RFIFOS = lambda p, pos1, pos2: p[pos1*2:pos2*2]
 RFIFOB = lambda p, pos: int(p[pos*2:pos*2+2],16)
@@ -67,7 +52,8 @@ RFIFOPOSY = lambda p, pos: ((int(p[pos*2+2:pos*2+4],16)&0x3f)<<4) + ((int(p[pos*
 RFIFOPOSD = lambda p, pos: (int(p[pos*2+4:pos*2+6],16)&0xF)
 
 gettick = lambda : time.time()
-getskillname = lambda n: "NewSkill" if skillname[n] == '' else skillname[n]
+getskill = lambda n: n if not n in SkillName else SkillName[n]
+getefst = lambda n: n if not n in EFST else EFST[n]
 
 def read_config_db():
 	path = './Config.txt'
@@ -83,21 +69,6 @@ def read_config_db():
 				if len(l) >= 2:
 					if l[0] in Configuration:
 						Configuration[str(l[0])] = int(l[1])
-
-def read_skillname_db():
-	path = './SkillName.txt'
-
-	with open(path) as f:
-		for s_line in f:
-			if s_line[:2] == "//":
-				continue
-			elif s_line[:1] == "\n":
-				continue
-			else:
-				l = s_line.split('\t')
-				if len(l) >= 2:
-					l[1] = l[1].replace("\n","")
-					skillname[int(l[0])] = str(l[1])
 
 def read_packet_db():
 	path = './PacketLength.txt'
@@ -129,7 +100,7 @@ def read_ignore_db():
 			else:
 				l = s_line.split(' ')
 				if len(l) >= 2:
-					if int(l[0],16) == 0xfff:
+					if int(l[0],16) == 0xffff:
 						global IgnorePacketAll
 						IgnorePacketAll = int(l[1])
 					else:
@@ -150,7 +121,7 @@ def save_configuration():
 				if len(sp) >= 2:
 					if sp[0] in Configuration:
 						sp[1] = str(Configuration[sp[0]])
-				sp2 = ' '.join(sp)
+				sp2 = '\t'.join(sp)
 				savedata.append(sp2)
 	s_lines = ['' if '\n' in s else s for s in savedata]
 	sp = '\n'.join(s_lines)
@@ -842,7 +813,7 @@ class MARiA_Frame(wx.Frame):
 			p		= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
-					self.text.AppendText("@skillcasting(src: \"{}\"({}), dst: {}, skill: \"{}\"({}), casttime: {})\n".format(mobdata[p][aid][MOB.NAME], aid, dst, getskillname(skillid), skillid, tick))
+					self.text.AppendText("@skillcasting(src: \"{}\"({}), dst: {}, skill: \"{}\"({}), casttime: {})\n".format(mobdata[p][aid][MOB.NAME], aid, dst, getskill(skillid), skillid, tick))
 		elif num == 0x1de:	#skill_damage
 			skillid	= RFIFOW(buf,2)
 			aid		= RFIFOL(buf,4)
@@ -857,7 +828,7 @@ class MARiA_Frame(wx.Frame):
 			p		= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
-					self.text.AppendText("@skillattack(src: \"{}\"({}), dst: ({}), skill: \"{}\"({}), skill_lv: {}, damage: {}, sDelay: {}, dDelay: {}, div: {}, hit: {}, tick: {})\n".format(mobdata[p][aid][MOB.NAME],aid,dst,getskillname(skillid),skillid,skilllv,damage,sdelay,ddelay,div_,hit_,tick))
+					self.text.AppendText("@skillattack(src: \"{}\"({}), dst: ({}), skill: \"{}\"({}), skill_lv: {}, damage: {}, sDelay: {}, dDelay: {}, div: {}, hit: {}, tick: {})\n".format(mobdata[p][aid][MOB.NAME],aid,dst,getskill(skillid),skillid,skilllv,damage,sdelay,ddelay,div_,hit_,tick))
 		elif num == 0x11a:	#skill_nodamage
 			skillid	= RFIFOW(buf,2)
 			val		= RFIFOW(buf,4)
@@ -866,7 +837,7 @@ class MARiA_Frame(wx.Frame):
 			p		= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
-					self.text.AppendText("@skillnodamage(src: \"{}\"({}), dst: ({}), skill: \"{}\"({}), val: {})\n".format(mobdata[p][aid][MOB.NAME], aid, dst, getskillname(skillid), skillid, val))
+					self.text.AppendText("@skillnodamage(src: \"{}\"({}), dst: ({}), skill: \"{}\"({}), val: {})\n".format(mobdata[p][aid][MOB.NAME], aid, dst, getskill(skillid), skillid, val))
 		elif num == 0x9cb:	#skill_nodamage
 			skillid	= RFIFOW(buf,2)
 			val		= RFIFOL(buf,4)
@@ -875,7 +846,7 @@ class MARiA_Frame(wx.Frame):
 			p		= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
-					self.text.AppendText("@skillnodamage(src: \"{}\"({}), dst: ({}), skill: \"{}\"({}), val: {})\n".format(mobdata[p][aid][MOB.NAME], aid, dst, getskillname(skillid), skillid, val))
+					self.text.AppendText("@skillnodamage(src: \"{}\"({}), dst: ({}), skill: \"{}\"({}), val: {})\n".format(mobdata[p][aid][MOB.NAME], aid, dst, getskill(skillid), skillid, val))
 		elif num == 0x117:	#skill_poseffect
 			skillid	= RFIFOW(buf,2)
 			aid		= RFIFOL(buf,4)
@@ -884,7 +855,7 @@ class MARiA_Frame(wx.Frame):
 			p		= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
-					self.text.AppendText("@skillposeffect(src: \"{}\"({}), skill: \"{}\"({}), val: {}, tick: {})\n".format(mobdata[p][aid][MOB.NAME], aid, getskillname(skillid), skillid, val, tick))
+					self.text.AppendText("@skillposeffect(src: \"{}\"({}), skill: \"{}\"({}), val: {}, tick: {})\n".format(mobdata[p][aid][MOB.NAME], aid, getskill(skillid), skillid, val, tick))
 		elif num == 0x9ca:	#skill_unit
 			aid		= RFIFOL(buf,8)
 			x		= RFIFOW(buf,12)
@@ -1084,7 +1055,7 @@ class MARiA_Frame(wx.Frame):
 			port	= RFIFOW(buf,26)
 			chrdata['mapname'] = s
 			self.mapport.SetValue(str(port))
-			self.th.setport(int(self.mapport.GetValue()))
+			self.th.setport(int(self.charport.GetValue()), int(self.mapport.GetValue()))
 			self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
 			i = 0
 			while i < 15:
@@ -1122,7 +1093,7 @@ class MARiA_Frame(wx.Frame):
 			chrdata['x'] = x
 			chrdata['y'] = y
 			self.mapport.SetValue(str(port))
-			self.th.setport(int(self.mapport.GetValue()))
+			self.th.setport(int(self.charport.GetValue()), int(self.mapport.GetValue()))
 			self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
 			self.text.AppendText("@changemapserver \""+s+",\" x : "+str(x)+", y : "+str(y)+", port : "+str(port)+";\n")
 		elif num == 0x087:	#walk
@@ -1217,15 +1188,15 @@ class MARiA_Frame(wx.Frame):
 			val1	= RFIFOL(buf,17)
 			val2	= RFIFOL(buf,21)
 			val3	= RFIFOL(buf,25)
-			if type == 46:
+			if type == 46 or type == 622 or type == 673:
 				pass
 			else:
 				p	= self.mapport.GetValue()
 				if chrdata['aid'] == aid:
-					self.text.AppendText("sc_start3 {},{},{},{},0,{},{};\t// self\n".format(type,val1,val2,val3,mtick,flag))
+					self.text.AppendText("@sc_start3 {},{},{},{},0,{},{};\t// self\n".format(getefst(type),val1,val2,val3,mtick,flag))
 				elif p in mobdata.keys():
 					if aid in mobdata[p].keys():
-						self.text.AppendText("@sc_start3 {},{},{},{},0,{},{};\t// {}\n".format(type,val1,val2,val3,mtick,flag,aid))
+						self.text.AppendText("@sc_start3 {},{},{},{},0,{},{};\t// {}\n".format(getefst(type),val1,val2,val3,mtick,flag,aid))
 		elif num == 0x43f:	#status_change
 			type	= RFIFOW(buf,2)
 			aid		= RFIFOL(buf,4)
@@ -1234,15 +1205,15 @@ class MARiA_Frame(wx.Frame):
 			val1	= RFIFOL(buf,13)
 			val2	= RFIFOL(buf,17)
 			val3	= RFIFOL(buf,21)
-			if type == 46:
+			if type == 46 or type == 622 or type == 673:
 				pass
 			else:
 				p	= self.mapport.GetValue()
 				if chrdata['aid'] == aid:
-					self.text.AppendText("sc_start3 {},{},{},{},0,{},{};\t// self\n".format(type,val1,val2,val3,tick,flag))
+					self.text.AppendText("@sc_start3 {},{},{},{},0,{},{};\t// self\n".format(getefst(type),val1,val2,val3,tick,flag))
 				elif p in mobdata.keys():
 					if aid in mobdata[p].keys():
-						self.text.AppendText("@sc_start3 {},{},{},{},0,{},{};\t// {}\n".format(type,val1,val2,val3,tick,flag,aid))
+						self.text.AppendText("@sc_start3 {},{},{},{},0,{},{};\t// {}\n".format(getefst(type),val1,val2,val3,tick,flag,aid))
 		elif num == 0x8ff:	#seteffect_enter
 			aid		= RFIFOL(buf,2)
 			type	= RFIFOW(buf,6)
@@ -1250,15 +1221,15 @@ class MARiA_Frame(wx.Frame):
 			val1	= RFIFOL(buf,12)
 			val2	= RFIFOL(buf,16)
 			val3	= RFIFOL(buf,20)
-			if type == 46:
+			if type == 46 or type == 622 or type == 673:
 				pass
 			else:
 				p	= self.mapport.GetValue()
 				if chrdata['aid'] == aid:
-					self.text.AppendText("@effect_enter {},{},{},{},0,{};\t// self\n".format(type,val1,val2,val3,tick))
+					self.text.AppendText("@effect_enter {},{},{},{},0,{};\t// self\n".format(getefst(type),val1,val2,val3,tick))
 				elif p in mobdata.keys():
 					if aid in mobdata[p].keys():
-						self.text.AppendText("@effect_enter {},{},{},{},0,{},{};\t// {}\n".format(type,val1,val2,val3,tick,flag,aid))
+						self.text.AppendText("@effect_enter {},{},{},{},0,{},{};\t// {}\n".format(getefst(type),val1,val2,val3,tick,flag,aid))
 		elif num == 0x984:	#seteffect_enter
 			aid		= RFIFOL(buf,2)
 			type	= RFIFOW(buf,6)
@@ -1267,34 +1238,34 @@ class MARiA_Frame(wx.Frame):
 			val1	= RFIFOL(buf,16)
 			val2	= RFIFOL(buf,20)
 			val3	= RFIFOL(buf,24)
-			if type == 46:
+			if type == 46 or type == 622 or type == 673:
 				pass
 			else:
 				p	= self.mapport.GetValue()
 				if chrdata['aid'] == aid:
-					self.text.AppendText("@effect_enter {},{},{},{},0,{};\t// self\n".format(type,val1,val2,val3,mtick))
+					self.text.AppendText("@effect_enter {},{},{},{},0,{};\t// self\n".format(getefst(type),val1,val2,val3,mtick))
 				elif p in mobdata.keys():
 					if aid in mobdata[p].keys():
-						self.text.AppendText("@effect_enter {},{},{},{},0,{};\t// {}\n".format(type,val1,val2,val3,mtick,aid))
+						self.text.AppendText("@effect_enter {},{},{},{},0,{};\t// {}\n".format(getefst(type),val1,val2,val3,mtick,aid))
 		elif num == 0x196:	#status_load
 			type	= RFIFOW(buf,2)
 			aid		= RFIFOL(buf,4)
 			flag	= RFIFOB(buf,8)
-			if type == 46:
+			if type == 46 or type == 622 or type == 673:
 				pass
 			else:
 				p	= self.mapport.GetValue()
 				if chrdata['aid'] == aid:
 					if flag == 0:
-						self.text.AppendText("sc_end {};\t// self\n".format(type))
+						self.text.AppendText("@sc_end {};\t// self\n".format(getefst(type)))
 					else:
-						self.text.AppendText("@status_load type: {}, flag: {}\t// self\n".format(type,flag))
+						self.text.AppendText("@status_load type: {}, flag: {}\t// self\n".format(getefst(type),flag))
 				elif p in mobdata.keys():
 					if aid in mobdata[p].keys():
 						if flag == 0:
-							self.text.AppendText("sc_end {},{};\n".format(type,aid))
+							self.text.AppendText("sc_end {},{};\n".format(getefst(type),aid))
 						else:
-							self.text.AppendText("@status_load type: {}, aid: {}, flag: {}\t\n".format(type,aid,flag))
+							self.text.AppendText("@status_load type: {}, aid: {}, flag: {}\t\n".format(getefst(type),aid,flag))
 		elif num == 0xadf:	#charname_req
 			aid			= RFIFOL(buf,2)
 			group_id	= RFIFOL(buf,6)
@@ -1371,6 +1342,5 @@ app = wx.App()
 read_packet_db()
 read_ignore_db()
 read_config_db()
-read_skillname_db()
 MARiA_Frame(None, -1, "MARiA  "+MARiA_VERSION)
 app.MainLoop()

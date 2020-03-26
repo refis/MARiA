@@ -32,6 +32,7 @@ npcdata.setdefault('5121',{})
 npcdata['5121'].setdefault(0,{})
 npcdata['5121'][0] = dummy_npc
 warpnpc = {}
+skillname = [""] * 10020
 
 TargetIP = 0
 IgnorePacketAll = 0
@@ -66,6 +67,7 @@ RFIFOPOSY = lambda p, pos: ((int(p[pos*2+2:pos*2+4],16)&0x3f)<<4) + ((int(p[pos*
 RFIFOPOSD = lambda p, pos: (int(p[pos*2+4:pos*2+6],16)&0xF)
 
 gettick = lambda : time.time()
+getskillname = lambda n: "NewSkill" if skillname[n] == '' else skillname[n]
 
 def read_config_db():
 	path = './Config.txt'
@@ -77,10 +79,25 @@ def read_config_db():
 			elif s_line[:1] == "\n":
 				continue
 			else:
-				l = s_line.split(' ')
+				l = s_line.split('\t')
 				if len(l) >= 2:
 					if l[0] in Configuration:
 						Configuration[str(l[0])] = int(l[1])
+
+def read_skillname_db():
+	path = './SkillName.txt'
+
+	with open(path) as f:
+		for s_line in f:
+			if s_line[:2] == "//":
+				continue
+			elif s_line[:1] == "\n":
+				continue
+			else:
+				l = s_line.split('\t')
+				if len(l) >= 2:
+					l[1] = l[1].replace("\n","")
+					skillname[int(l[0])] = str(l[1])
 
 def read_packet_db():
 	path = './PacketLength.txt'
@@ -126,16 +143,17 @@ def save_configuration():
 		for s_line in f:
 			if s_line[:2] == "//":
 				savedata.append(s_line)
-			elif s_line[:1] == "\n":
-				savedata.append(s_line)
+			elif s_line[:1] == "\n" or not s_line:
+				savedata.append("\n")
 			else:
-				sp = s_line.split(' ')
+				sp = s_line.split('\t')
 				if len(sp) >= 2:
 					if sp[0] in Configuration:
 						sp[1] = str(Configuration[sp[0]])
 				sp2 = ' '.join(sp)
 				savedata.append(sp2)
-	sp = '\n'.join(savedata)
+	s_lines = ['' if '\n' in s else s for s in savedata]
+	sp = '\n'.join(s_lines)
 	with open(path, mode="w") as f:
 		f.write(sp)
 
@@ -145,7 +163,8 @@ class MARiA_Catch(threading.Thread):
 		self.data = []
 		self.data.append("")
 		self.datacnt = 0
-		self.port = 5121
+		self.charport = 6121
+		self.mapport = 5121
 		self.pause_flag = True
 
 	def readpause(self):
@@ -165,8 +184,9 @@ class MARiA_Catch(threading.Thread):
 	def readcnt(self):
 		return self.datacnt
 
-	def setport(self, num):
-		self.port = num
+	def setport(self, num1, num2):
+		self.charport = num1
+		self.mapport = num2
 
 	def run(self):
 		sniff (filter = "ip host "+TargetIP, prn=self.OnCatch, count=0)
@@ -175,7 +195,7 @@ class MARiA_Catch(threading.Thread):
 		self.pause_flag = flag
 
 	def is_this_target_packet(self, packet):
-		return TCP in packet and (packet[TCP].sport == self.port or packet[TCP].sport == 6121)
+		return TCP in packet and (packet[TCP].sport == self.charport or packet[TCP].sport == self.mapport)
 
 	def OnHexEx(self,x):
 		s = ""
@@ -267,14 +287,22 @@ class MARiA_Frame(wx.Frame):
 		p1 = wx.Panel(sp, -1)
 
 		hbox1 = wx.BoxSizer(wx.HORIZONTAL)
-		st1 = wx.StaticText(p1, -1, 'Map Port:')
-		hbox1.Add(st1, 0, wx.LEFT | wx.BOTTOM | wx.TOP, 2)
-		self.port = wx.TextCtrl(
+		st3 = wx.StaticText(p1, -1, 'Char Port:')
+		hbox1.Add(st3, 0, wx.LEFT | wx.BOTTOM | wx.TOP, 2)
+		self.charport = wx.TextCtrl(
 			p1,
 			-1,
 			size=(40,10))
-		self.port.WriteText('5121')
-		hbox1.Add(self.port, 1, wx.EXPAND)
+		self.charport.WriteText('6121')
+		hbox1.Add(self.charport, 1, wx.EXPAND)
+		st1 = wx.StaticText(p1, -1, 'Map Port:')
+		hbox1.Add(st1, 0, wx.LEFT | wx.BOTTOM | wx.TOP, 2)
+		self.mapport = wx.TextCtrl(
+			p1,
+			-1,
+			size=(40,10))
+		self.mapport.WriteText('5121')
+		hbox1.Add(self.mapport, 1, wx.EXPAND)
 		st2 = wx.StaticText(p1, -1, 'Active Start:')
 		hbox1.Add(st2, 1, wx.RIGHT | wx.BOTTOM | wx.TOP, 2)
 		self.button = wx.Button(
@@ -326,16 +354,18 @@ class MARiA_Frame(wx.Frame):
 			self.th.start()
 			self.Started = True
 		if self.th.readpause() == True:
-			self.th.setport(int(self.port.GetValue()))
+			self.th.setport(int(self.charport.GetValue()), int(self.mapport.GetValue()))
 			self.th.c_pause(False)
 			self.timer.Start(MARiA_Frame.Speed)
 			self.button.SetLabel("Stop")
-			self.port.Disable()
+			self.charport.Disable()
+			self.mapport.Disable()
 		else:
 			self.th.c_pause(True)
 			self.timer.Stop()
 			self.button.SetLabel("Start")
-			self.port.Enable()
+			self.charport.Enable()
+			self.mapport.Enable()
 
 	def OnTimer(self, event):
 		if event.GetId() == MARiA_Frame.ID_TIMER:
@@ -409,6 +439,9 @@ class MARiA_Frame(wx.Frame):
 		self.btext.Clear()
 
 	def OnClearScript(self, event):
+		self.text.Clear()
+
+	def CheckNearNPC(self, x, y):
 		self.text.Clear()
 
 	def GetPacket(self):
@@ -530,7 +563,7 @@ class MARiA_Frame(wx.Frame):
 					if s_len > 46 and ((s[-2:] >= '80' and s[-2:] <= '9f') or (s[-2:] >= 'e0' and s[-2:] <= '9e')):
 						s = s[:-2]
 					s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
-					p = self.port.GetValue()
+					p = self.mapport.GetValue()
 					m = chrdata['mapname']
 					if type == 5:
 						if p in mobdata.keys():
@@ -543,8 +576,8 @@ class MARiA_Frame(wx.Frame):
 							self.text.AppendText("@spawn(type: BL_MOB, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
 							mobdata[p] = { aid: [m,x,y,s,view,speed,0] }
 					elif type == 6:
-						if self.port.GetValue() in npcdata.keys():
-							if aid in npcdata[self.port.GetValue()].keys():
+						if self.mapport.GetValue() in npcdata.keys():
+							if aid in npcdata[self.mapport.GetValue()].keys():
 								if npcdata[p][aid][NPC.CLASS] != view:
 									self.text.AppendText("@viewchange(setnpcdisplay \"{}\", {};\t// {}\n".format(s, view, aid))
 								elif npcdata[p][aid][NPC.OPTION] != option:
@@ -586,7 +619,7 @@ class MARiA_Frame(wx.Frame):
 					if s_len > 46 and ((s[-2:] >= '80' and s[-2:] <= '9f') or (s[-2:] >= 'e0' and s[-2:] <= '9e')):
 						s = s[:-2]
 					s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
-					p = self.port.GetValue()
+					p = self.mapport.GetValue()
 					m = chrdata['mapname']
 					if type == 5:
 						if p in mobdata.keys():
@@ -642,7 +675,7 @@ class MARiA_Frame(wx.Frame):
 					if s_len > 46 and ((s[-2:] >= '80' and s[-2:] <= '9f') or (s[-2:] >= 'e0' and s[-2:] <= '9e')):
 						s = s[:-2]
 					s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
-					p = self.port.GetValue()
+					p = self.mapport.GetValue()
 					m = chrdata['mapname']
 					if type == 5:
 						if p in mobdata.keys():
@@ -697,7 +730,7 @@ class MARiA_Frame(wx.Frame):
 			aid		= RFIFOL(buf,2)
 			type	= RFIFOB(buf,6)
 			class_	= RFIFOL(buf,7)
-			p		= self.port.GetValue()
+			p		= self.mapport.GetValue()
 			if p in npcdata.keys():
 				if aid in npcdata[p].keys():
 					self.text.AppendText("setnpcdisplay \"{}\",{};\t// {}\n".format(npcdata[p][aid][NPC.NAME], class_, aid))
@@ -778,7 +811,7 @@ class MARiA_Frame(wx.Frame):
 				sdelay	= RFIFOL(buf,14)
 				ddelay	= RFIFOL(buf,18)
 				damage	= RFIFOW(buf,22)
-				p		= self.port.GetValue()
+				p		= self.mapport.GetValue()
 				if chrdata['aid'] == aid:
 					self.text.AppendText("@nomalattack_lower(dst: ({}), damage: {}, sDelay: {}, dDelay: {}, tick: {})\t// self\n".format(dst,damage,sdelay,ddelay,tick))
 				elif p in mobdata.keys():
@@ -795,7 +828,7 @@ class MARiA_Frame(wx.Frame):
 				sdelay	= RFIFOL(buf,14)
 				ddelay	= RFIFOL(buf,18)
 				damage	= RFIFOL(buf,22)
-				p		= self.port.GetValue()
+				p		= self.mapport.GetValue()
 				if chrdata['aid'] == aid:
 					self.text.AppendText("@nomalattack(dst: ({}), damage: {}, sDelay: {}, dDelay: {}, tick: {})\t// self\n".format(dst,damage,sdelay,ddelay,tick))
 				elif p in mobdata.keys():
@@ -806,10 +839,10 @@ class MARiA_Frame(wx.Frame):
 			dst		= RFIFOL(buf,6)
 			skillid	= RFIFOW(buf,14)
 			tick	= RFIFOL(buf,20)
-			p		= self.port.GetValue()
+			p		= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
-					self.text.AppendText("@skillcasting(src: \"{}\"({}), dst: {}, skill: ({}), casttime: {})\n".format(mobdata[p][aid][MOB.NAME], aid, dst, skillid, tick))
+					self.text.AppendText("@skillcasting(src: \"{}\"({}), dst: {}, skill: \"{}\"({}), casttime: {})\n".format(mobdata[p][aid][MOB.NAME], aid, dst, getskillname(skillid), skillid, tick))
 		elif num == 0x1de:	#skill_damage
 			skillid	= RFIFOW(buf,2)
 			aid		= RFIFOL(buf,4)
@@ -821,51 +854,51 @@ class MARiA_Frame(wx.Frame):
 			skilllv	= RFIFOW(buf,28)
 			div_	= RFIFOW(buf,30)
 			hit_	= RFIFOB(buf,32)
-			p		= self.port.GetValue()
+			p		= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
-					self.text.AppendText("@skillattack(src: \"{}\"({}), dst: ({}), skill: ({}), skill_lv: {}, damage: {}, sDelay: {}, dDelay: {}, div: {}, hit: {}, tick: {})\n".format(mobdata[p][aid][MOB.NAME],aid,dst,skillid,skilllv,damage,sdelay,ddelay,div_,hit_,tick))
+					self.text.AppendText("@skillattack(src: \"{}\"({}), dst: ({}), skill: \"{}\"({}), skill_lv: {}, damage: {}, sDelay: {}, dDelay: {}, div: {}, hit: {}, tick: {})\n".format(mobdata[p][aid][MOB.NAME],aid,dst,getskillname(skillid),skillid,skilllv,damage,sdelay,ddelay,div_,hit_,tick))
 		elif num == 0x11a:	#skill_nodamage
 			skillid	= RFIFOW(buf,2)
 			val		= RFIFOW(buf,4)
 			dst		= RFIFOL(buf,6)
 			aid		= RFIFOL(buf,10)
-			p		= self.port.GetValue()
+			p		= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
-					self.text.AppendText("@skillnodamage(src: \""+mobdata[p][aid][MOB.NAME]+"\"(" +str(aid)+ "), dst: ("+str(dst)+"), skill: ("+str(skillid)+"), val: "+str(val)+")\n")
+					self.text.AppendText("@skillnodamage(src: \"{}\"({}), dst: ({}), skill: \"{}\"({}), val: {})\n".format(mobdata[p][aid][MOB.NAME], aid, dst, getskillname(skillid), skillid, val))
 		elif num == 0x9cb:	#skill_nodamage
 			skillid	= RFIFOW(buf,2)
 			val		= RFIFOL(buf,4)
 			dst		= RFIFOL(buf,8)
 			aid		= RFIFOL(buf,12)
-			p		= self.port.GetValue()
+			p		= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
-					self.text.AppendText("@skillnodamage(src: \""+mobdata[p][aid][MOB.NAME]+"\"(" +str(aid)+ "), dst: ("+str(dst)+"), skill: ("+str(skillid)+"), val: "+str(val)+")\n")
+					self.text.AppendText("@skillnodamage(src: \"{}\"({}), dst: ({}), skill: \"{}\"({}), val: {})\n".format(mobdata[p][aid][MOB.NAME], aid, dst, getskillname(skillid), skillid, val))
 		elif num == 0x117:	#skill_poseffect
 			skillid	= RFIFOW(buf,2)
 			aid		= RFIFOL(buf,4)
 			val		= RFIFOW(buf,8)
 			tick	= RFIFOL(buf,14)
-			p		= self.port.GetValue()
+			p		= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
-					self.text.AppendText("@skillposeffect(src: \""+mobdata[p][aid][MOB.NAME]+"\"(" +str(aid)+ "), skill: ("+str(skillid)+"), val: "+str(val)+", tick: "+str(tick)+")\n")
+					self.text.AppendText("@skillposeffect(src: \"{}\"({}), skill: \"{}\"({}), val: {}, tick: {})\n".format(mobdata[p][aid][MOB.NAME], aid, getskillname(skillid), skillid, val, tick))
 		elif num == 0x9ca:	#skill_unit
 			aid		= RFIFOL(buf,8)
 			x		= RFIFOW(buf,12)
 			y		= RFIFOW(buf,14)
 			unit_id	= RFIFOL(buf,16)
 			skilllv	= RFIFOB(buf,22)
-			p		= self.port.GetValue()
+			p		= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
-					self.text.AppendText("@skillunit_appeared(\""+mobdata[p][aid][MOB.NAME]+"\"(" +str(aid)+ "), pos("+str(x)+", "+str(y)+"), unit_id: "+str(unit_id)+"), skill_lv: "+str(skilllv)+")\n")
+					self.text.AppendText("@skillunit_appeared(\""+mobdata[p][aid][MOB.NAME]+"\"(" +str(aid)+ "), pos("+str(x)+", "+str(y)+"), unit_id: "+str(hex(unit_id))+"), skill_lv: "+str(skilllv)+")\n")
 		elif num == 0x080:	#clear_unit
 			aid		= RFIFOL(buf,2)
 			type	= RFIFOB(buf,6)
-			p		= self.port.GetValue()
+			p		= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
 					if type == 1:
@@ -888,7 +921,7 @@ class MARiA_Frame(wx.Frame):
 			opt2	= RFIFOW(buf,8)
 			option	= RFIFOW(buf,10)
 			karma	= RFIFOB(buf,14)
-			p		= self.port.GetValue()
+			p		= self.mapport.GetValue()
 			s		= ""
 			if p in npcdata.keys():
 				if aid in npcdata[p].keys():
@@ -907,16 +940,20 @@ class MARiA_Frame(wx.Frame):
 		elif num == 0x0c0:	#emotion
 			aid		= RFIFOL(buf,2)
 			type	= RFIFOB(buf,6)
-			p		= self.port.GetValue()
+			p		= self.mapport.GetValue()
 			if chrdata['aid'] == aid:
 				self.text.AppendText("emotion "+str(type)+","";\t// self\n")
 			elif p in npcdata.keys():
 				if aid in npcdata[p].keys():
 					self.text.AppendText("emotion "+str(type)+",\""+npcdata[p][aid][NPC.NAME]+"\";\t// " +str(aid)+ "\n")
+			elif self.prev_num == 0x1de or self.prev_num == 0x11a or self.prev_num == 0x117 or self.prev_num == 0x9cb or self.prev_num == 0x9ca or self.prev_num == 0x7fb:
+				if p in mobdata.keys():
+					if aid in mobdata[p].keys():
+						self.text.AppendText("@emotion "+str(type)+",\""+mobdata[p][aid][MOB.NAME]+"\";\t// " +str(aid)+ "\n")
 		elif num == 0x19b or num == 0x1f3:	#misceffect
 			aid		= RFIFOL(buf,2)
 			type	= RFIFOL(buf,6)
-			p		= self.port.GetValue()
+			p		= self.mapport.GetValue()
 			if chrdata['aid'] == aid:
 				self.text.AppendText("misceffect "+str(type)+","";\t// self:" +str(n)+ "\n")
 			elif p in npcdata.keys():
@@ -941,7 +978,7 @@ class MARiA_Frame(wx.Frame):
 			s = buf[17*2:s_len*2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
 			s = s.replace("\0","")
-			p = self.port.GetValue()
+			p = self.mapport.GetValue()
 			if p in npcdata.keys():
 				if aid in npcdata[p].keys():
 					self.text.AppendText("waitingroom \""+s+"\", 0;\t// " +str(aid)+ "\n")
@@ -980,7 +1017,7 @@ class MARiA_Frame(wx.Frame):
 				s	+= str(RFIFOL(buf,4+i*13))
 				i += 1
 			aid = self.tmp_id
-			p = self.port.GetValue()
+			p = self.mapport.GetValue()
 			if aid == 0:
 				m = chrdata["mapname"]
 				self.text.AppendText("-\tshop\t"+ m[:-4] +"#callshop\t-1," +s +"\t// selfpos("+ str(chrdata["x"])+", "+ str(chrdata["y"]) +")\n")
@@ -1046,8 +1083,8 @@ class MARiA_Frame(wx.Frame):
 			s = s.replace("\0","")
 			port	= RFIFOW(buf,26)
 			chrdata['mapname'] = s
-			self.port.SetValue(str(port))
-			self.th.setport(int(self.port.GetValue()))
+			self.mapport.SetValue(str(port))
+			self.th.setport(int(self.mapport.GetValue()))
 			self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
 			i = 0
 			while i < 15:
@@ -1084,8 +1121,8 @@ class MARiA_Frame(wx.Frame):
 			chrdata['mapname'] = s
 			chrdata['x'] = x
 			chrdata['y'] = y
-			self.port.SetValue(str(port))
-			self.th.setport(int(self.port.GetValue()))
+			self.mapport.SetValue(str(port))
+			self.th.setport(int(self.mapport.GetValue()))
 			self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
 			self.text.AppendText("@changemapserver \""+s+",\" x : "+str(x)+", y : "+str(y)+", port : "+str(port)+";\n")
 		elif num == 0x087:	#walk
@@ -1113,7 +1150,7 @@ class MARiA_Frame(wx.Frame):
 			s = s.replace("\0","")
 			s = s.replace(chrdata['name'],"\"+strcharinfo(0)+\"")
 			aid	= RFIFOL(buf,4)
-			p	= self.port.GetValue()
+			p	= self.mapport.GetValue()
 			if chrdata['aid'] == aid:
 				self.text.AppendText("unittalk getcharid(3),\""+s+"\",1;\t// self:hidden\n")
 			elif p in npcdata.keys():
@@ -1134,7 +1171,7 @@ class MARiA_Frame(wx.Frame):
 			aid	= RFIFOL(buf,4)
 			color	= RFIFOL(buf,8)
 			color = (int(color,16) & 0x0000FF) >> 16 | (int(color,16) & 0x00FF00) | (int(color,16) & 0xFF0000) << 16;
-			p	= self.port.GetValue()
+			p	= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
 					self.text.AppendText("@monstertalk \""+s+"\", color: " +str(color)+ ", id: " +str(aid)+ "\n")
@@ -1144,7 +1181,7 @@ class MARiA_Frame(wx.Frame):
 			s = buf[8*2:p_len*2-2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
 			aid	= RFIFOL(buf,4)
-			p	= self.port.GetValue()
+			p	= self.mapport.GetValue()
 			if chrdata['aid'] == aid:
 				self.text.AppendText("showmessage \""+s+",\","";\t// self:hidden\n")
 			elif p in npcdata.keys():
@@ -1183,7 +1220,7 @@ class MARiA_Frame(wx.Frame):
 			if type == 46:
 				pass
 			else:
-				p	= self.port.GetValue()
+				p	= self.mapport.GetValue()
 				if chrdata['aid'] == aid:
 					self.text.AppendText("sc_start3 {},{},{},{},0,{},{};\t// self\n".format(type,val1,val2,val3,mtick,flag))
 				elif p in mobdata.keys():
@@ -1200,7 +1237,7 @@ class MARiA_Frame(wx.Frame):
 			if type == 46:
 				pass
 			else:
-				p	= self.port.GetValue()
+				p	= self.mapport.GetValue()
 				if chrdata['aid'] == aid:
 					self.text.AppendText("sc_start3 {},{},{},{},0,{},{};\t// self\n".format(type,val1,val2,val3,tick,flag))
 				elif p in mobdata.keys():
@@ -1216,7 +1253,7 @@ class MARiA_Frame(wx.Frame):
 			if type == 46:
 				pass
 			else:
-				p	= self.port.GetValue()
+				p	= self.mapport.GetValue()
 				if chrdata['aid'] == aid:
 					self.text.AppendText("@effect_enter {},{},{},{},0,{};\t// self\n".format(type,val1,val2,val3,tick))
 				elif p in mobdata.keys():
@@ -1233,7 +1270,7 @@ class MARiA_Frame(wx.Frame):
 			if type == 46:
 				pass
 			else:
-				p	= self.port.GetValue()
+				p	= self.mapport.GetValue()
 				if chrdata['aid'] == aid:
 					self.text.AppendText("@effect_enter {},{},{},{},0,{};\t// self\n".format(type,val1,val2,val3,mtick))
 				elif p in mobdata.keys():
@@ -1246,7 +1283,7 @@ class MARiA_Frame(wx.Frame):
 			if type == 46:
 				pass
 			else:
-				p	= self.port.GetValue()
+				p	= self.mapport.GetValue()
 				if chrdata['aid'] == aid:
 					if flag == 0:
 						self.text.AppendText("sc_end {};\t// self\n".format(type))
@@ -1268,8 +1305,8 @@ class MARiA_Frame(wx.Frame):
 				self.text.AppendText("//setgroupid "+ str(group_id) + ";\t// " +str(aid)+ "\n")
 			t = buf[34*2:58*2-2]
 			t = binascii.unhexlify(t.encode('utf-8')).decode('cp932','ignore')
-			t = t.replace("\0","")
-			if t != "":
+#			t = t.replace("\0","")
+			if t[0] != "\0":
 				self.text.AppendText("//settitle "+ t + ";\n// " +str(aid)+ "\n")
 		elif num == 0xa24:	#acievement update
 			nameid = RFIFOL(buf,16)
@@ -1290,7 +1327,7 @@ class MARiA_Frame(wx.Frame):
 			aid		= RFIFOL(buf,2)
 			hp		= RFIFOL(buf,6)
 			maxhp	= RFIFOL(buf,10)
-			p	= self.port.GetValue()
+			p	= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
 					self.text.AppendText("@hpinfo name: "+ mobdata[p][aid][MOB.NAME] + ", class: "+ str(mobdata[p][aid][MOB.CLASS]) +", HP: " +str(hp)+ "/" +maxhp+ "\n")
@@ -1298,7 +1335,7 @@ class MARiA_Frame(wx.Frame):
 		elif num == 0xa36:	#hp_info_tiny
 			aid	= RFIFOL(buf,2)
 			per	= RFIFOB(buf,6)
-			p	= self.port.GetValue()
+			p	= self.mapport.GetValue()
 			self.text.AppendText("@hp_info_tiny name: "+ mobdata[p][aid][MOB.NAME] + ", class: "+ str(mobdata[p][aid][MOB.CLASS]) +", per: "+ str(hex(per)) +"\n")
 			pass
 		elif num == 0x283:	#account_id
@@ -1334,5 +1371,6 @@ app = wx.App()
 read_packet_db()
 read_ignore_db()
 read_config_db()
+read_skillname_db()
 MARiA_Frame(None, -1, "MARiA  "+MARiA_VERSION)
 app.MainLoop()

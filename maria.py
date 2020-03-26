@@ -12,7 +12,7 @@ import const
 
 MARiA_MAJOR_VERSION = 0
 MARiA_MINOR_VERSION = 0
-MARiA_MAJOR_REVISION = 13
+MARiA_MAJOR_REVISION = 14
 MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
 
 Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
@@ -41,6 +41,8 @@ MAX_PACKET_DB = 0x0b90
 
 SkillName = const.SKILLNAME
 EFST = const.EFST
+NPC = const.NPC
+MOB = const.MOB
 
 RFIFOS = lambda p, pos1, pos2: p[pos1*2:pos2*2]
 RFIFOB = lambda p, pos: int(p[pos*2:pos*2+2],16)
@@ -469,7 +471,6 @@ class MARiA_Frame(wx.Frame):
 				if buf[:4] == "0000":
 					if total_len >= 10:
 						if buf[:10] == "0000000000":
-							self.btext.AppendText("\nlogout-mode 00 00 00 00 00 catch!")
 							if packet_len*2+10 < total_len:
 								self.buf = buf = buf[10:total_len]
 							else:
@@ -1079,25 +1080,31 @@ class MARiA_Frame(wx.Frame):
 			s = s.replace("\0","")
 			x	= RFIFOW(buf,18)
 			y	= RFIFOW(buf,20)
-			chrdata['mapname'] = s
-			chrdata['x'] = x
-			chrdata['y'] = y
-			self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
-			self.text.AppendText("@changemap \""+s+",\" x : "+str(x)+", y : "+str(y)+";\n")
+			if s[-4:] == ".gat":
+				self.text.AppendText("@changemap \"{}\", x : {}, y : {};\t// from: {}({}, {})\n".format(s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
+				chrdata['mapname'] = s
+				chrdata['x'] = x
+				chrdata['y'] = y
+				self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
+			else:
+				self.text.AppendText("@changemap Failed packet\n")
 		elif num == 0x92:	#changemapserver
 			s = buf[2*2:p_len*2-20]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
 			s = s.replace("\0","")
-			x	= RFIFOB(buf,18)
-			y	= RFIFOB(buf,20)
+			x	= RFIFOW(buf,18)
+			y	= RFIFOW(buf,20)
 			port	= RFIFOW(buf,26)
-			chrdata['mapname'] = s
-			chrdata['x'] = x
-			chrdata['y'] = y
-			self.mapport.SetValue(str(port))
-			self.th.setport(int(self.charport.GetValue()), int(self.mapport.GetValue()))
-			self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
-			self.text.AppendText("@changemapserver \""+s+",\" x : "+str(x)+", y : "+str(y)+", port : "+str(port)+";\n")
+			if s[-4:] == ".gat":
+				self.text.AppendText("@changemapserver \"{}\", x : {}, y : {}, port : {};\t// from: {}({}, {})\n".format(s, x, y, port, chrdata['mapname'], chrdata['x'], chrdata['y']))
+				chrdata['mapname'] = s
+				chrdata['x'] = x
+				chrdata['y'] = y
+				self.mapport.SetValue(str(port))
+				self.th.setport(int(self.charport.GetValue()), int(self.mapport.GetValue()))
+				self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
+			else:
+				self.text.AppendText("@changemapserver Failed packet\n")
 		elif num == 0x087:	#walk
 			x = int(((int(buf[8*2:8*2+2],16)&0xF)<<6) + (int(buf[9*2:9*2+2],16)>>2))
 			y = int(((int(buf[9*2:9*2+2],16)&0x3)<<8) + int(buf[10*2:10*2+2],16))
@@ -1190,15 +1197,15 @@ class MARiA_Frame(wx.Frame):
 			val1	= RFIFOL(buf,17)
 			val2	= RFIFOL(buf,21)
 			val3	= RFIFOL(buf,25)
-			if type == 46 or type == 622 or type == 673:
+			if mtick == 9999:
 				pass
 			else:
 				p	= self.mapport.GetValue()
 				if chrdata['aid'] == aid:
-					self.text.AppendText("@sc_start3 {},{},{},{},0,{},{};\t// self\n".format(getefst(type),val1,val2,val3,mtick,flag))
+					self.text.AppendText("@sc_start3 {},{},{},{},0,{},{};\t// self, tick={}\n".format(getefst(type),val1,val2,val3,mtick,flag,tick))
 				elif p in mobdata.keys():
 					if aid in mobdata[p].keys():
-						self.text.AppendText("@sc_start3 {},{},{},{},0,{},{};\t// {}\n".format(getefst(type),val1,val2,val3,mtick,flag,aid))
+						self.text.AppendText("@sc_start3 {},{},{},{},0,{},{};\t// {}, tick={}\n".format(getefst(type),val1,val2,val3,mtick,flag,aid,tick))
 		elif num == 0x43f:	#status_change
 			type	= RFIFOW(buf,2)
 			aid		= RFIFOL(buf,4)
@@ -1207,7 +1214,7 @@ class MARiA_Frame(wx.Frame):
 			val1	= RFIFOL(buf,13)
 			val2	= RFIFOL(buf,17)
 			val3	= RFIFOL(buf,21)
-			if type == 46 or type == 622 or type == 673:
+			if tick == 9999:
 				pass
 			else:
 				p	= self.mapport.GetValue()
@@ -1223,7 +1230,7 @@ class MARiA_Frame(wx.Frame):
 			val1	= RFIFOL(buf,12)
 			val2	= RFIFOL(buf,16)
 			val3	= RFIFOL(buf,20)
-			if type == 46 or type == 622 or type == 673:
+			if tick == 9999 or type == 993:
 				pass
 			else:
 				p	= self.mapport.GetValue()
@@ -1240,7 +1247,7 @@ class MARiA_Frame(wx.Frame):
 			val1	= RFIFOL(buf,16)
 			val2	= RFIFOL(buf,20)
 			val3	= RFIFOL(buf,24)
-			if type == 46 or type == 622 or type == 673:
+			if mtick == 9999 or type == 993:
 				pass
 			else:
 				p	= self.mapport.GetValue()
@@ -1253,7 +1260,7 @@ class MARiA_Frame(wx.Frame):
 			type	= RFIFOW(buf,2)
 			aid		= RFIFOL(buf,4)
 			flag	= RFIFOB(buf,8)
-			if type == 46 or type == 622 or type == 673:
+			if type == 46 or type == 622 or type == 673 or type == 993:
 				pass
 			else:
 				p	= self.mapport.GetValue()

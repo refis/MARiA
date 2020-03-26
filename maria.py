@@ -266,6 +266,7 @@ class MARiA_Frame(wx.Frame):
 			size=(40,10))
 		self.charport.WriteText('6121')
 		hbox1.Add(self.charport, 1, wx.EXPAND)
+
 		st1 = wx.StaticText(p1, -1, 'Map Port:')
 		hbox1.Add(st1, 0, wx.LEFT | wx.BOTTOM | wx.TOP, 2)
 		self.mapport = wx.TextCtrl(
@@ -274,6 +275,7 @@ class MARiA_Frame(wx.Frame):
 			size=(40,10))
 		self.mapport.WriteText('5121')
 		hbox1.Add(self.mapport, 1, wx.EXPAND)
+
 		st2 = wx.StaticText(p1, -1, 'Active Start:')
 		hbox1.Add(st2, 1, wx.RIGHT | wx.BOTTOM | wx.TOP, 2)
 		self.button = wx.Button(
@@ -441,13 +443,13 @@ class MARiA_Frame(wx.Frame):
 						self.buf = buf = ''
 						break
 				else:
-					print("[Error] unknown packet len: ",format(num, '#06x'),", set packet_len: 2\n")
+					print("[Error] unknown packet len: ",format(num, '#06x'),", prev:",format(self.prev_num, '#06x'),", set packet_len: 2\n")
 					self.btext.AppendText("\nunknown_packetlength" + format(num, '#06x')+": " + buf)
 					packet_len = 2
 			if packet_len == -1:
 				packet_len = RFIFOW(buf,2)
 				if packet_len <= 0:
-					print("[Error] unknown packet len = 0: ",format(num, '#06x'),", clear buf: ",buf,"\n")
+					print("[Error] unknown packet len = 0: ",format(num, '#06x'),", prev:",format(self.prev_num, '#06x'),", clear buf: ",buf,"\n")
 					self.btext.AppendText("\n"+format(num, '#06x')+" len=0: Please check PacketLength.txt. (prev:" + format(self.prev_num, '#06x')+")\n")
 					self.buf = buf = ''
 					break

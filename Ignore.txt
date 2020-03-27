@@ -5,60 +5,142 @@
 //   type:
 //        0x1  skip binary window only
 //        0x2  skip script window only
-//        0x3  both
+//        0x3  skip both
+//        0x4  allow binary window only
+//        0x8  allow script window only
+//        0xc  allow both
 
-0xffff 1 //allskip_binary
+0xffff 3 //allskip_binary
 
-0x0080 1 //clear_unit
-0x0087 1 //walk
-0x0088 1 //fixpos
-0x008d 1 //globalmessage
-0x008e 1 //selfmessage
-0x0196 1 //status_load
-0x0229 1 //changeoption
-0x0283 1 //connect ok
-0x02eb 1 //auth ok
-0x043f 1 //status_change
-0x0983 1 //status_change
-0x09ca 1 //skill_unit
-0x09fd 1 //move
-0x09fe 1 //spawn
-0x09ff 1 //idle
-0x0a36 1 //hp_info_tiny
+0x00b4 8 //mes
+0x09fd 8 //move
+0x09fe 8 //spawn
+0x09ff 8 //idle
+0x00b5 8 //next
+0x00b6 8 //close
+0x08d6 8 //clear
+0x00b7 8 //select
+0x0142 8 //input num
+0x01d4 8 //input str
+0x01b3 8 //cutin
+0x01b0 8 //classchange
+0x02b3 8 //quest_add
+0x09f9 8 //quest_add
+0x0b0c 8 //quest_add
+0x02b4 8 //quest_del
+0x009a 8 //broadcast
+0x01c3 8 //announce
+0x040c 8 //announce
+0x02f0 8 //progressbar
+0x01ff 8 //blown
+0x008a 8 //nomalattack
+0x02e1 8 //nomalattack
+0x08c8 8 //nomalattack
+0x013e 8 //skill_casting
+0x07fb 8 //skill_casting
+0x01de 8 //skill_damage
+0x011a 8 //skill_nodamage
+0x09cb 8 //skill_nodamage
+0x0117 8 //skill_poseffect
+0x09ca 8 //skill_unit
+0x0080 8 //clear_unit
+0x0acc 8 //gainexp
+0x0229 8 //changeoption
+0x00c0 8 //emotion
+0x019b 8 //misceffect
+0x01f3 8 //misceffect
+0x0144 8 //viewpoint
+0x00d7 8 //chatwnd
+0x0192 8 //mapcell
+0x01d3 8 //soundeffect
+0x07fe 8 //musiceffect
+0x00c4 8 //npcshop
+0x00c6 8 //npcshop2
+0x00b1 8 //updatestatus
+0x0acb 8 //updatestatus
+0x099d 8 //charactor_select
+0x0071 8 //charactor_select
+0x0091 8 //changemap
+0x0092 8 //changemapserver
+0x0087 8 //walk
+0x0088 8 //fixpos
+0x02eb 8 //authok
+0x0a18 8 //authok
+0x008d 8 //message
+0x008e 8 //message
+0x02c1 8 //multicolormessage
+0x08b3 8 //showscript
+0x0a37 8 //getitem
+0x00af 8 //delitem
+0x0229 8 //delitem
+0x07fa 8 //delitem
+0x02cb 8 //mdcreate
+0x0983 8 //status_change
+0x043f 8 //status_change
+0x08ff 8 //seteffect_enter
+0x0984 8 //seteffect_enter
+0x0196 8 //status_load
+0x0adf 8 //charname_req
+0x0a24 8 //acievement update
+0x0b13 8 //itempreview
+0x01d6 8 //mapproperty
+0x099b 8 //mapproperty_r
+0x0283 8 //account_id
 
-0x0000 3 //unknown
-0x007f 3 //server_tick
-0x0095 3 //charname
-0x009c 3 //changedir
-0x009d 3 //iteminsight
-0x009e 3 //dropflooritem
-0x00a1 3 //clearflooritem
-0x00b0 3 //updatestatus
-0x0101 3 //partyoption
-0x0110 3 //skillfail
-0x0120 3 //clearskillunit
-0x0131 3 //vendingboard
-0x0187 3 //alive
-0x01eb 3 //guildmemberxy
-0x01f2 3 //guildmemberlogin
-0x0201 3 //friend
-0x0227 3 //gameguard
-0x02a2 3 //mercstatus
-0x02a3 3 //gameguard_key
-0x02cd 3 //mdcreated
-0x02ce 3 //mdchangestatus
-0x0440 3 //mshield
-0x080e 3 //hpmeter
-0x0814 3 //buyingboard
-0x0977 3 //hp_info
-0x0a27 3 //n_heal
-0x0a30 3 //charname
-0x0a36 3 //hp_info_tiny
-0x0a3b 3 //hateffect
-0x0adc 3 //config
-0x0add 3 //dropflooritem
-0x0ae4 3 //partymaininfo
-0x0ae5 3 //partyinfo
-0x0af7 3 //solvedcharname
-0x0afe 3 //killcntupdate
-0x0aff 3 //questlist
+//0x0080 1 //clear_unit
+//0x0087 1 //walk
+//0x0088 1 //fixpos
+//0x008d 1 //globalmessage
+//0x008e 1 //selfmessage
+//0x00d7 1 //dispchat
+//0x0196 1 //status_load
+//0x0229 1 //changeoption
+//0x0283 1 //connect ok
+//0x02eb 1 //auth ok
+//0x043f 1 //status_change
+//0x0983 1 //status_change
+//0x09ca 1 //skill_unit
+//0x09fd 1 //move
+//0x09fe 1 //spawn
+//0x09ff 1 //idle
+//0x0a36 1 //hp_info_tiny
+//0x0adf 1 //title
+
+//0x0000 3 //unknown
+//0x007f 3 //server_tick
+//0x0095 3 //charname
+//0x009c 3 //changedir
+//0x009d 3 //iteminsight
+//0x009e 3 //dropflooritem
+//0x00a1 3 //clearflooritem
+//0x00b0 3 //updatestatus
+//0x00d8 3 //dispchat
+//0x0101 3 //partyoption
+//0x0110 3 //skillfail
+//0x0120 3 //clearskillunit
+//0x0131 3 //vendingboard
+//0x0187 3 //alive
+//0x01c8 3 //useitemack
+//0x01eb 3 //guildmemberxy
+//0x01f2 3 //guildmemberlogin
+//0x0201 3 //friend
+//0x0227 3 //gameguard
+//0x02a2 3 //mercstatus
+//0x02a3 3 //gameguard_key
+//0x02cd 3 //mdcreated
+//0x02ce 3 //mdchangestatus
+//0x0440 3 //mshield
+//0x080e 3 //hpmeter
+//0x0814 3 //buyingboard
+//0x0977 3 //hp_info
+//0x0a27 3 //n_heal
+//0x0a30 3 //charname
+//0x0a36 3 //hp_info_tiny
+//0x0a3b 3 //hateffect
+//0x0adc 3 //config
+//0x0add 3 //dropflooritem
+//0x0ae4 3 //partymaininfo
+//0x0ae5 3 //partyinfo
+//0x0af7 3 //solvedcharname
+//0x0afe 3 //killcntupdate
+//0x0aff 3 //questlist

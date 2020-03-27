@@ -33,6 +33,9 @@ npcdata.setdefault('5121',{})
 npcdata['5121'].setdefault(0,{})
 npcdata['5121'][0] = dummy_npc
 warpnpc = {}
+warpnpc.setdefault('5121',{})
+warpnpc['5121'].setdefault(0,{})
+warpnpc['5121'][0] = "dummy"
 
 TargetIP = 0
 IgnorePacketAll = 0
@@ -409,6 +412,9 @@ class MARiA_Frame(wx.Frame):
 		global warpnpc
 		warpnpc.clear()
 		warpnpc = {}
+		warpnpc.setdefault('5121',{})
+		warpnpc['5121'].setdefault(0,{})
+		warpnpc['5121'][0] = "dummy"
 
 	def OnClearBinary(self, event):
 		self.btext.Clear()
@@ -416,8 +422,18 @@ class MARiA_Frame(wx.Frame):
 	def OnClearScript(self, event):
 		self.text.Clear()
 
-	def CheckNearNPC(self, x, y):
-		self.text.Clear()
+	def CheckNearNPC(self, m, x, y):
+		p = self.mapport.GetValue()
+		if p in npcdata.keys():
+			for aid in npcdata[p].keys():
+				nm = npcdata[p][aid][NPC.MAP]
+				class_ = npcdata[p][aid][NPC.CLASS]
+				if nm == m and class_ == 45:
+					nx = npcdata[p][aid][NPC.POSX]
+					ny = npcdata[p][aid][NPC.POSY]
+					if nx+2 >= x and nx-2 <= x and ny+2 >= y and ny-2 <= y:
+						return aid
+		return -1
 
 	def GetPacket(self):
 		buf = self.buf
@@ -489,7 +505,7 @@ class MARiA_Frame(wx.Frame):
 			ignore_type = 0
 			if num in IgnorePacket.keys():
 				ignore_type = IgnorePacket[num]
-			if ignore_type&1 == 0 and IgnorePacketAll&1 == 0:
+			if (ignore_type&1 == 0 and IgnorePacketAll&1 == 0) or ignore_type&4:
 				i = 0
 				if self.btext.GetValue() != '':
 					self.btext.AppendText('\n')
@@ -497,7 +513,7 @@ class MARiA_Frame(wx.Frame):
 				while i < packet_len*2:
 					self.btext.AppendText(buf[i:i+2]+ ' ')
 					i += 2
-			if ignore_type&2 == 0 and IgnorePacketAll&2 == 0:
+			if (ignore_type&2 == 0 and IgnorePacketAll&2 == 0) or ignore_type&8:
 				try:
 					if packet_len >= 2:
 						self.ReadPacket(num, packet_len)
@@ -550,8 +566,8 @@ class MARiA_Frame(wx.Frame):
 							self.text.AppendText("@spawn(type: BL_MOB, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
 							mobdata[p] = { aid: [m,x,y,s,view,speed,0] }
 					elif type == 6:
-						if self.mapport.GetValue() in npcdata.keys():
-							if aid in npcdata[self.mapport.GetValue()].keys():
+						if p in npcdata.keys():
+							if aid in npcdata[p].keys():
 								if npcdata[p][aid][NPC.CLASS] != view:
 									self.text.AppendText("@viewchange(setnpcdisplay \"{}\", {};\t// {}\n".format(s, view, aid))
 								elif npcdata[p][aid][NPC.OPTION] != option:
@@ -790,6 +806,12 @@ class MARiA_Frame(wx.Frame):
 					self.text.AppendText("@nomalattack_lower(dst: ({}), damage: {}, sDelay: {}, dDelay: {}, tick: {})\t// self\n".format(dst,damage,sdelay,ddelay,tick))
 				elif p in mobdata.keys():
 					if aid in mobdata[p].keys():
+						if mobdata[p][aid][MOB.TICK] > 0:
+							prev = tick
+							tick = tick - mobdata[p][aid][MOB.TICK]
+							mobdata[p][aid][MOB.TICK] = prev
+						else:
+							mobdata[p][aid][MOB.TICK] = tick
 						self.text.AppendText("@nomalattack_lower(src: \"{}\"({}), dst: ({}), damage: {}, sDelay: {}, dDelay: {}, tick: {})\n".format(mobdata[p][aid][MOB.NAME],aid,dst,damage,sdelay,ddelay,tick))
 		elif num == 0x2e1 or num == 0x8c8:	#nomalattack
 			type = RFIFOB(buf,29) if num == 0x8c8 else RFIFOB(buf,28)
@@ -807,6 +829,12 @@ class MARiA_Frame(wx.Frame):
 					self.text.AppendText("@nomalattack(dst: ({}), damage: {}, sDelay: {}, dDelay: {}, tick: {})\t// self\n".format(dst,damage,sdelay,ddelay,tick))
 				elif p in mobdata.keys():
 					if aid in mobdata[p].keys():
+						if mobdata[p][aid][MOB.TICK] > 0:
+							prev = tick
+							tick = tick - mobdata[p][aid][MOB.TICK]
+							mobdata[p][aid][MOB.TICK] = prev
+						else:
+							mobdata[p][aid][MOB.TICK] = tick
 						self.text.AppendText("@nomalattack(src: \"{}\"({}), dst: ({}), damage: {}, sDelay: {}, dDelay: {}, tick: {})\n".format(mobdata[p][aid][MOB.NAME],aid,dst,damage,sdelay,ddelay,tick))
 		elif num == 0x13e or num == 0x7fb:	#skill_casting
 			aid		= RFIFOL(buf,2)
@@ -1081,7 +1109,22 @@ class MARiA_Frame(wx.Frame):
 			x	= RFIFOW(buf,18)
 			y	= RFIFOW(buf,20)
 			if s[-4:] == ".gat":
-				self.text.AppendText("@changemap \"{}\", x : {}, y : {};\t// from: {}({}, {})\n".format(s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
+				aid = self.CheckNearNPC(chrdata['mapname'], chrdata['x'], chrdata['y']);
+				p = self.mapport.GetValue()
+				if aid >= 0:
+					if p in warpnpc.keys():
+						if aid in warpnpc[p].keys():
+							self.text.AppendText("@changemap \"{}\", x : {}, y : {};\t// from: {}({}, {})\n".format(s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
+						else:
+							self.text.AppendText("{},{},{},0\twarp\t{}\t2,2,{},{},{} //{} from_pos=({}, {})\n".format(
+								npcdata[p][aid][NPC.MAP],npcdata[p][aid][NPC.POSX],npcdata[p][aid][NPC.POSY],npcdata[p][aid][NPC.NAME], s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
+							warpnpc[p][aid] = npcdata[p][aid][NPC.NAME]
+					else:
+						self.text.AppendText("{},{},{},0\twarp\t{}\t2,2,{},{},{} //{} from_pos=({}, {})\n".format(
+							npcdata[p][aid][NPC.MAP],npcdata[p][aid][NPC.POSX],npcdata[p][aid][NPC.POSY],npcdata[p][aid][NPC.NAME], s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
+						warpnpc[p] = { aid: npcdata[p][aid][NPC.NAME] }
+				else:
+					self.text.AppendText("@changemap \"{}\", x : {}, y : {};\t// from: {}({}, {})\n".format(s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
 				chrdata['mapname'] = s
 				chrdata['x'] = x
 				chrdata['y'] = y
@@ -1096,7 +1139,22 @@ class MARiA_Frame(wx.Frame):
 			y	= RFIFOW(buf,20)
 			port	= RFIFOW(buf,26)
 			if s[-4:] == ".gat":
-				self.text.AppendText("@changemapserver \"{}\", x : {}, y : {}, port : {};\t// from: {}({}, {})\n".format(s, x, y, port, chrdata['mapname'], chrdata['x'], chrdata['y']))
+				aid = self.CheckNearNPC(chrdata['mapname'], chrdata['x'], chrdata['y']);
+				p = self.mapport.GetValue()
+				if aid >= 0:
+					if p in warpnpc.keys():
+						if aid in warpnpc[p].keys():
+							self.text.AppendText("@changemapserver \"{}\", x : {}, y : {}, port : {};\t// from: {}({}, {})\n".format(s, x, y, port, chrdata['mapname'], chrdata['x'], chrdata['y']))
+						else:
+							self.text.AppendText("{},{},{},0\twarp\t{}\t2,2,{},{},{} //{} from_pos=({}, {})\n".format(
+								npcdata[p][aid][NPC.MAP],npcdata[p][aid][NPC.POSX],npcdata[p][aid][NPC.POSY],npcdata[p][aid][NPC.NAME], s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
+							warpnpc[p][aid] = [npcdata[p][aid][NPC.NAME]]
+					else:
+						self.text.AppendText("{},{},{},0\twarp\t{}\t2,2,{},{},{} //{} from_pos=({}, {})\n".format(
+							npcdata[p][aid][NPC.MAP],npcdata[p][aid][NPC.POSX],npcdata[p][aid][NPC.POSY],npcdata[p][aid][NPC.NAME], s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
+						warpnpc[p] = { aid: [npcdata[p][aid][NPC.NAME]] }
+				else:
+					self.text.AppendText("@changemapserver \"{}\", x : {}, y : {}, port : {};\t// from: {}({}, {})\n".format(s, x, y, port, chrdata['mapname'], chrdata['x'], chrdata['y']))
 				chrdata['mapname'] = s
 				chrdata['x'] = x
 				chrdata['y'] = y
@@ -1321,28 +1379,6 @@ class MARiA_Frame(wx.Frame):
 		elif num == 0x283:	#account_id
 			aid	= RFIFOL(buf,2)
 			chrdata['aid'] = aid
-			pass
-		elif num == 0xb08:	#inventorystart
-			pass
-		elif num == 0xb09:	#inventory
-			pass
-		elif num == 0xb0a:	#inventory
-			pass
-		elif num == 0xb0b:	#inventoryend
-			pass
-		elif num == 0x10f:	#skillinfoblock
-			pass
-		elif num == 0x13a:	#attack range
-			pass
-		elif num == 0xa00:	#hotkey
-			pass
-		elif num == 0x0bd:	#initialstatus
-			pass
-		elif num == 0x141:	#status
-			pass
-		elif num == 0x2c9:	#partyconfig
-			pass
-		elif num == 0x1d7:	#spritechange
 			pass
 		elif Configuration['Show_OtherPacket'] == 1:
 			self.text.AppendText("@packet "+ n + ".\n")

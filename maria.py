@@ -19,6 +19,7 @@ Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500
 dummy_mob = ["unknown.gat",0,0,"No Mob Name",0,0,0]
 dummy_npc = ["unknown.gat",0,0,0,"No NPC Name",0,0]
 dummy_chr = {'Char_id': 0, 'Char_Name': 0, "BaseExp": -1, "JobExp": -1, "Zeny": -1}
+dummy_inv = {'Nameid': 0, 'Amount': 0}
 Packetlen = {}
 IgnorePacket = {}
 chrselect = []
@@ -36,6 +37,10 @@ warpnpc = {}
 warpnpc.setdefault('5121',{})
 warpnpc['5121'].setdefault(0,{})
 warpnpc['5121'][0] = "dummy"
+inventory = {}
+inventory.setdefault('item',{})
+inventory['item'].setdefault(0,{})
+inventory['item'][0] = dummy_inv
 
 TargetIP = 0
 IgnorePacketAll = 0
@@ -441,8 +446,8 @@ class MARiA_Frame(wx.Frame):
 		self.timerlock = 1
 		while not buf == "":
 			lasttick = gettick()
-#			if lasttick - tick > 90:	#90msを超えたら再帰
-#				break
+			if lasttick - tick > 50:	#50msを超えたら再帰
+				break
 			total_len = len(buf)
 			num = RFIFOW(buf,0)
 			if num in Packetlen.keys():
@@ -457,12 +462,12 @@ class MARiA_Frame(wx.Frame):
 						buf = buf[2:total_len]	#1byte skip
 					else:
 						print("[Error] unknown ultra high packet, id: ",format(num, '#06x'),", prev:",format(self.prev_num, '#06x'),", clear buf: ",buf,"\n")
-						self.btext.AppendText("\nultrahigh_packetid_" + format(num, '#06x'))
+						self.btext.AppendText("\nultrahigh_packetid_" + format(num, '#06x')+", prev:"+format(self.prev_num, '#06x'))
 						self.buf = buf = ''
 						break
 				else:
 					print("[Error] unknown packet len: ",format(num, '#06x'),", prev:",format(self.prev_num, '#06x'),", set packet_len: 2\n")
-					self.btext.AppendText("\nunknown_packetlength" + format(num, '#06x')+": " + buf)
+					self.btext.AppendText("\nunknown_packetlength" + format(num, '#06x')+", prev:"+format(self.prev_num, '#06x'))
 					packet_len = 2
 			if packet_len == -1:
 				packet_len = RFIFOW(buf,2)
@@ -471,11 +476,8 @@ class MARiA_Frame(wx.Frame):
 					self.btext.AppendText("\n"+format(num, '#06x')+" len=0: Please check PacketLength.txt. (prev:" + format(self.prev_num, '#06x')+")\n")
 					self.buf = buf = ''
 					break
-#				print("num:",hex(num),"packet...:",packet_len,"total:",total_len,"mes:",buf)
-#			else:
-#				print("num:",hex(num),"packet_len:",packet_len,"total:",total_len,"mes:",buf)
 			if packet_len*2 > total_len:	#パケット足りてない
-				if self.packet_lasttick > 0 and tick - self.packet_lasttick > 1000:	#1000ms待機しても続きが来ない
+				if self.packet_lasttick > 0 and lasttick - self.packet_lasttick > 1000:	#1000ms待機しても続きが来ない
 					print("[Error] packet time out, target:",format(num, '#06x'),", len: ",str(packet_len),", prev:",format(self.prev_num, '#06x'),", clear buf: ",buf,"\n")
 					self.btext.AppendText("\n" + format(num, '#06x')+"(len = "+str(packet_len)+") Time out. Please check PacketLength.txt. (prev:" +format(self.prev_num, '#06x')+ ")")
 					self.buf = buf = ''
@@ -553,6 +555,7 @@ class MARiA_Frame(wx.Frame):
 					if s_len > 46 and ((s[-2:] >= '80' and s[-2:] <= '9f') or (s[-2:] >= 'e0' and s[-2:] <= '9e')):
 						s = s[:-2]
 					s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
+					s = "" if s[0] == '\0' else s
 					p = self.mapport.GetValue()
 					m = chrdata['mapname']
 					if type == 5:
@@ -609,6 +612,7 @@ class MARiA_Frame(wx.Frame):
 					if s_len > 46 and ((s[-2:] >= '80' and s[-2:] <= '9f') or (s[-2:] >= 'e0' and s[-2:] <= '9e')):
 						s = s[:-2]
 					s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
+					s = "" if s[0] == '\0' else s
 					p = self.mapport.GetValue()
 					m = chrdata['mapname']
 					if type == 5:
@@ -974,15 +978,15 @@ class MARiA_Frame(wx.Frame):
 			color	= color&0x00FFFFFF
 			self.text.AppendText("viewpoint "+str(type)+", "+str(x)+", "+str(y)+", "+str(id)+", 0x"+format(color, '06X')+";\t// "+str(n)+"\n")
 		elif num == 0x0d7:	#chatwnd
-			s_len	= RFIFOW(buf,2)
-			aid		= RFIFOL(buf,4)
-			chatid	= RFIFOL(buf,8)
-			s = buf[17*2:s_len*2]
-			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
-			s = s.replace("\0","")
 			p = self.mapport.GetValue()
 			if p in npcdata.keys():
+				aid		= RFIFOL(buf,4)
 				if aid in npcdata[p].keys():
+					s_len	= RFIFOW(buf,2)
+					chatid	= RFIFOL(buf,8)
+					s = buf[17*2:s_len*2]
+					s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
+					s = s.replace("\0","")
 					self.text.AppendText("waitingroom \""+s+"\", 0;\t// " +str(aid)+ "\n")
 		elif num == 0x192:	#mapcell
 			x		= RFIFOW(buf,2)
@@ -1214,7 +1218,7 @@ class MARiA_Frame(wx.Frame):
 				if aid in mobdata[p].keys():
 					self.text.AppendText("@monstertalk \""+s+"\", color: " +str(color)+ ", id: " +str(aid)+ "\n")
 			else:
-				self.text.AppendText("@talk  \""+s+"\", color: " +str(color)+ ", id: " +str(aid)+ "\n")
+				self.text.AppendText("@talk \""+s+"\", color: " +str(color)+ ", id: " +str(aid)+ "\n")
 		elif num == 0x8b3:	#showscript
 			s = buf[8*2:p_len*2-2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
@@ -1232,15 +1236,44 @@ class MARiA_Frame(wx.Frame):
 			idx		= RFIFOW(buf,2)
 			amount	= RFIFOW(buf,4)
 			itemid	= RFIFOL(buf,6)
-			self.text.AppendText("getitem {},{};\n".format(itemid,amount))
+			if idx in inventory['item'].keys():
+				nameid = inventory['item'][idx]["Nameid"]
+				if itemid == nameid:
+					n = inventory['item'][idx]["Amount"]
+					inventory['item'][idx]["Amount"] = n + amount
+					self.text.AppendText("getitem {},{};\n".format(itemid,amount))
+				else:
+					self.text.AppendText("@getitem {},{};\t//unexpected error\n".format(itemid,amount))
+			else:
+				inventory['item'][idx] = {"Nameid": itemid, "Amount": amount}
+				self.text.AppendText("getitem {},{};\n".format(itemid,amount))
 		elif num == 0x0af or num == 0x229:	#delitem
+
 			idx		= RFIFOW(buf,2)
 			amount	= RFIFOW(buf,4)
-			self.text.AppendText("delitem idx:{},{};\n".format(idx,amount))
+			if idx in inventory['item'].keys():
+				nameid = inventory['item'][idx]["Nameid"]
+				values = inventory['item'][idx]["Amount"] - amount
+				if values <= 0:
+					del inventory['item'][idx]
+				else:
+					inventory['item'][idx]["Amount"] = values
+				self.text.AppendText("delitem {},{};\n".format(nameid,amount))
+			else:
+				self.text.AppendText("@delitem idx:{},{};\t//NotFound\n".format(idx,amount))
 		elif num == 0x7fa:	#delitem
 			idx		= RFIFOW(buf,4)
 			amount	= RFIFOW(buf,6)
-			self.text.AppendText("delitem idx:{},{};\n".format(idx,amount))
+			if idx in inventory['item'].keys():
+				nameid = inventory['item'][idx]["Nameid"]
+				values = inventory['item'][idx]["Amount"] - amount
+				if values <= 0:
+					del inventory['item'][idx]
+				else:
+					inventory['item'][idx]["Amount"] = values
+				self.text.AppendText("delitem {},{};\n".format(nameid,amount))
+			else:
+				self.text.AppendText("@delitem idx:{},{};\t//NotFound\n".format(idx,amount))
 		elif num == 0x2cb:	#mdcreate
 			s = buf[2*2:63*2-2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
@@ -1355,12 +1388,10 @@ class MARiA_Frame(wx.Frame):
 		elif num == 0x1d6:	#mapproperty
 			type = RFIFOW(buf,2)
 			self.text.AppendText("@mapproperty map: "+chrdata['mapname']+", type: "+ str(type) + "\n")
-			pass
 		elif num == 0x99b:	#mapproperty_r
 			type	= RFIFOW(buf,2)
 			bit		= RFIFOL(buf,4)
 			self.text.AppendText("@mapproperty_r map: "+chrdata['mapname']+", type: "+ str(type) + ", bit: "+ str(hex(bit)) +"\n")
-			pass
 		elif num == 0x977:	#hp_info
 			aid		= RFIFOL(buf,2)
 			hp		= RFIFOL(buf,6)
@@ -1369,17 +1400,26 @@ class MARiA_Frame(wx.Frame):
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
 					self.text.AppendText("@hpinfo name: "+ mobdata[p][aid][MOB.NAME] + ", class: "+ str(mobdata[p][aid][MOB.CLASS]) +", HP: " +str(hp)+ "/" +maxhp+ "\n")
-			pass
 		elif num == 0xa36:	#hp_info_tiny
 			aid	= RFIFOL(buf,2)
 			per	= RFIFOB(buf,6)
 			p	= self.mapport.GetValue()
 			self.text.AppendText("@hp_info_tiny name: "+ mobdata[p][aid][MOB.NAME] + ", class: "+ str(mobdata[p][aid][MOB.CLASS]) +", per: "+ str(hex(per)) +"\n")
-			pass
 		elif num == 0x283:	#account_id
 			aid	= RFIFOL(buf,2)
 			chrdata['aid'] = aid
-			pass
+		elif num == 0xb09 or num == 0xb0a:	#inventory
+			s_len = RFIFOW(buf,2)
+			type = RFIFOB(buf,4)
+			if type == 0:
+				c = 34 if num == 0xb09 else 67
+				i = 0
+				while i*c+5 < s_len:
+					idx    = RFIFOW(buf, i*c+5)
+					nameid = RFIFOL(buf, i*c+7)
+					amount = RFIFOW(buf, i*c+12) if num == 0xb09 else 1
+					inventory['item'][idx] = {"Nameid": nameid, "Amount": amount}
+					i += 1
 		elif Configuration['Show_OtherPacket'] == 1:
 			self.text.AppendText("@packet "+ n + ".\n")
 

@@ -86,6 +86,8 @@
 0x01d6 8 //mapproperty
 0x099b 8 //mapproperty_r
 0x0283 8 //account_id
+0x0b09 8 //inventory
+0x0b0a 8 //inventory
 
 //0x0080 1 //clear_unit
 //0x0087 1 //walk

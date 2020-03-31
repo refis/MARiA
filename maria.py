@@ -4,6 +4,7 @@ import wx
 import threading
 import binascii
 import time
+import datetime
 import socket
 import traceback
 from scapy.all import *
@@ -12,7 +13,7 @@ import const
 
 MARiA_MAJOR_VERSION = 0
 MARiA_MINOR_VERSION = 0
-MARiA_MAJOR_REVISION = 16
+MARiA_MAJOR_REVISION = 17
 MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
 
 Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
@@ -226,9 +227,33 @@ class MARiA_Frame(wx.Frame):
 
 		self.timer = wx.Timer(self, MARiA_Frame.ID_TIMER)
 
+		sb = self.CreateStatusBar()
+		sb.SetFieldsCount(4)
+		sb.SetStatusWidths([150, 130, 130, 120])
+		sb.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
+		sb.SetStatusText('BaseExp: '+str(chrdata['BaseExp']), 1)
+		sb.SetStatusText('JobExp: '+str(chrdata['JobExp']), 2)
+		sb.SetStatusText('Zeny: '+str(chrdata['Zeny']), 3)
+		self.statusbar = sb
+
 		menubar = wx.MenuBar()
 		file = wx.Menu()
 		edit = wx.Menu()
+
+		copybinary = file.Append(-1, "バイナリ窓コピー")
+		copyscript = file.Append(-1, "スクリプト窓コピー")
+		file.AppendSeparator()
+		item_1 = wx.MenuItem(file, -1, 'Auriga', kind=wx.ITEM_RADIO)
+		item_2 = wx.MenuItem(file, -1, 'rAthena:ToDo', kind=wx.ITEM_RADIO)
+		item_3 = wx.MenuItem(file, -1, 'Hercules:ToDo', kind=wx.ITEM_RADIO)
+		self.scripttimer = wx.MenuItem(file, -1, 'スクリプトタイマーを表示', kind=wx.ITEM_CHECK)
+		item_5 = wx.MenuItem(file, -1, 'ToDo', kind=wx.ITEM_CHECK)
+		file.Append(item_1)
+		file.Append(item_2)
+		file.Append(item_3)
+		file.AppendSeparator()
+		file.Append(self.scripttimer)
+		file.Append(item_5)
 
 		reloadignore = edit.Append(-1, "IgnorePacket再読み込み")
 		self.Bind(wx.EVT_MENU, self.OnReloadIgnore, reloadignore)
@@ -252,15 +277,6 @@ class MARiA_Frame(wx.Frame):
 		menubar.Append(file, '&File')
 		menubar.Append(edit, '&Edit')
 		self.SetMenuBar(menubar)
-
-		sb = self.CreateStatusBar()
-		sb.SetFieldsCount(4)
-		sb.SetStatusWidths([150, 130, 130, 120])
-		sb.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
-		sb.SetStatusText('BaseExp: '+str(chrdata['BaseExp']), 1)
-		sb.SetStatusText('JobExp: '+str(chrdata['JobExp']), 2)
-		sb.SetStatusText('Zeny: '+str(chrdata['Zeny']), 3)
-		self.statusbar = sb
 
 		sp = wx.SplitterWindow(self,-1, style=wx.SP_LIVE_UPDATE)
 
@@ -449,6 +465,8 @@ class MARiA_Frame(wx.Frame):
 			if lasttick - tick > 50:	#50msを超えたら再帰
 				break
 			total_len = len(buf)
+			if total_len < 4:	#4文字以下なら
+				break
 			num = RFIFOW(buf,0)
 			if num in Packetlen.keys():
 				packet_len = Packetlen[num]
@@ -694,31 +712,48 @@ class MARiA_Frame(wx.Frame):
 		elif num == 0x0b4:	#mes
 			s = buf[8*2:p_len*2-2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
-			s = s.replace(chrdata['name'],"\"+strcharinfo(0)+\"")
+			if chrdata['name'] != 'unknown name':
+				s = s.replace(chrdata['name'],"\"+strcharinfo(0)+\"")
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("mes \""+ s + "\";\n")
 		elif num == 0x0b5:	#next
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("next;\n")
 		elif num == 0x0b6:	#close
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("close;\n")
 		elif num == 0x8d6:	#clear
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("clear;\n")
 		elif num == 0x0b7:	#select
 			s = buf[8*2:p_len*2-4]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
 			l = s.split(':')
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			if len(l) == 1:
 				self.text.AppendText("menu \""+s+"\",-;\n")
 			else:
 				self.text.AppendText("select(\""+s.replace(':','\",\"')+"\")\n")
 		elif num == 0x142:	#input num
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("input '@num;\n")
 		elif num == 0x1d4:	#input str
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("input '@str$;\n")
 		elif num == 0x1b3:	#cutin
 			s = buf[2*2:p_len*2-4]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
 			s = s.replace("\0","")
 			type	= RFIFOB(buf,66)
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("cutin \""+s+"\", "+str(type)+";\n")
 		elif num == 0x1b0:	#classchange
 			aid		= RFIFOL(buf,2)
@@ -727,23 +762,34 @@ class MARiA_Frame(wx.Frame):
 			p		= self.mapport.GetValue()
 			if p in npcdata.keys():
 				if aid in npcdata[p].keys():
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 					self.text.AppendText("setnpcdisplay \"{}\",{};\t// {}\n".format(npcdata[p][aid][NPC.NAME], class_, aid))
 					npcdata[p][aid][NPC.CLASS] = class_
 			elif p in mobdata.keys():
 				if aid in mobdata[p].keys():
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 					self.text.AppendText("@classchange(src: \"{}\"({}), class: {}, type: {})\n".format(mobdata[p][aid][MOB.NAME],aid,class_,type))
 		elif num == 0x2b3 or num == 0x9f9 or num == 0xb0c:	#quest_add
 			quest_id = RFIFOL(buf,2)
 			state	 = RFIFOB(buf,6)
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("setquest {};\t// state={}\n".format(quest_id, state))
 		elif num == 0x2b4:	#quest_del
 			quest_id = RFIFOL(buf,2)
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("delquest {};\n".format(quest_id))
 		elif num == 0x09a:	#broadcast
 			color		= RFIFOL(buf,4)
 			s = buf[4*2:p_len*2-2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
-			s = s.replace(chrdata['name'],"\"+strcharinfo(0)+\"")
+			if chrdata['name'] != 'unknown name':
+				s = s.replace(chrdata['name'],"\"+strcharinfo(0)+\"")
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			if color == 0x65756c62:		#blue
 				self.text.AppendText("announce {}, 0x10;\n".format(s))
 			elif color == 0x73737373:	#ssss -> WoE
@@ -763,8 +809,11 @@ class MARiA_Frame(wx.Frame):
 			fontY		= RFIFOW(buf,14)
 			s = buf[16*2:p_len*2-2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
-			s = s.replace(chrdata['name'],"\"+strcharinfo(0)+\"")
+			if chrdata['name'] != 'unknown name':
+				s = s.replace(chrdata['name'],"\"+strcharinfo(0)+\"")
 			color = format(color, '#08x')
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			if fontType == 400 and fontSize == 12 and fontAlign == 0 and fontY == 0:
 				self.text.AppendText("announce \"{}\", 0x9, {};\n".format(s, color))
 			else:
@@ -774,6 +823,8 @@ class MARiA_Frame(wx.Frame):
 			color		= RFIFOL(buf,2)
 			casttime	= RFIFOL(buf,6)
 			color = format(color, '#08x')
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("progressbar {};\t//color={}\n".format(casttime,color))
 		elif num == 0x1ff:	#blown
 			aid	= RFIFOL(buf,2)
@@ -793,6 +844,8 @@ class MARiA_Frame(wx.Frame):
 			chrdata['y'] = y
 			self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
 			if chrdata['aid'] == aid:
+				if self.scripttimer.IsChecked() == 1:
+					self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 				self.text.AppendText("pushpc {}, {};\n".format(dir, dist))
 		elif num == 0x08a:	#nomalattack
 			type	= RFIFOB(buf,26)
@@ -939,6 +992,8 @@ class MARiA_Frame(wx.Frame):
 						s += "hideoffnpc"
 					s += " \""+npcdata[p][aid][NPC.NAME]+"\";\t// "+str(aid)
 					npcdata[p][aid][NPC.OPTION] = option
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 					self.text.AppendText(s+"\n")
 			elif p in mobdata.keys():
 				if aid in mobdata[p].keys():
@@ -948,25 +1003,37 @@ class MARiA_Frame(wx.Frame):
 			type	= RFIFOB(buf,6)
 			p		= self.mapport.GetValue()
 			if chrdata['aid'] == aid:
+				if self.scripttimer.IsChecked() == 1:
+					self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 				self.text.AppendText("emotion "+str(type)+","";\t// self\n")
 			elif p in npcdata.keys():
 				if aid in npcdata[p].keys():
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 					self.text.AppendText("emotion "+str(type)+",\""+npcdata[p][aid][NPC.NAME]+"\";\t// " +str(aid)+ "\n")
 			elif self.prev_num == 0x1de or self.prev_num == 0x11a or self.prev_num == 0x117 or self.prev_num == 0x9cb or self.prev_num == 0x9ca or self.prev_num == 0x7fb:
 				if p in mobdata.keys():
 					if aid in mobdata[p].keys():
+						if self.scripttimer.IsChecked() == 1:
+							self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 						self.text.AppendText("@emotion "+str(type)+",\""+mobdata[p][aid][MOB.NAME]+"\";\t// " +str(aid)+ "\n")
 		elif num == 0x19b or num == 0x1f3:	#misceffect
 			aid		= RFIFOL(buf,2)
 			type	= RFIFOL(buf,6)
 			p		= self.mapport.GetValue()
 			if chrdata['aid'] == aid:
+				if self.scripttimer.IsChecked() == 1:
+					self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 				self.text.AppendText("misceffect "+str(type)+","";\t// self:" +str(n)+ "\n")
 			elif p in npcdata.keys():
 				if aid in npcdata[p].keys():
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 					self.text.AppendText("misceffect "+str(type)+",\""+npcdata[p][aid][NPC.NAME]+"\";\t// " +str(aid)+ ":" +str(n)+ "\n")
 			elif p in mobdata.keys():
 				if aid in mobdata[p].keys():
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 					self.text.AppendText("@misceffect "+str(type)+",\""+mobdata[p][aid][MOB.NAME]+"\";\t// " +str(aid)+ ":" +str(n)+ "\n")
 		elif num == 0x144:	#viewpoint
 			aid		= RFIFOL(buf,2)
@@ -976,6 +1043,8 @@ class MARiA_Frame(wx.Frame):
 			id		= RFIFOB(buf,18)
 			color	= RFIFOL(buf,19)
 			color	= color&0x00FFFFFF
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("viewpoint "+str(type)+", "+str(x)+", "+str(y)+", "+str(id)+", 0x"+format(color, '06X')+";\t// "+str(n)+"\n")
 		elif num == 0x0d7:	#chatwnd
 			p = self.mapport.GetValue()
@@ -1003,11 +1072,15 @@ class MARiA_Frame(wx.Frame):
 			type		= RFIFOB(buf,26)
 			interval	= RFIFOL(buf,27)
 			aid			= RFIFOL(buf,31)
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("soundeffect \""+s+"\", "+str(type)+", "+str(interval)+";\t// "+str(aid)+"\n")
 		elif num == 0x7fe:	#musiceffect
 			s = buf[2*2:26*2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
 			s = s.replace("\0","")
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("musiceffect \""+s+"\";\n")
 		elif num == 0x0c4:	#npcshop
 			aid	= RFIFOL(buf,2)
@@ -1190,22 +1263,28 @@ class MARiA_Frame(wx.Frame):
 			s = buf[8*2:p_len*2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
 			s = s.replace("\0","")
-			s = s.replace(chrdata['name'],"\"+strcharinfo(0)+\"")
+			if chrdata['name'] != 'unknown name':
+				s = s.replace(chrdata['name'],"\"+strcharinfo(0)+\"")
 			aid	= RFIFOL(buf,4)
 			p	= self.mapport.GetValue()
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			if chrdata['aid'] == aid:
 				self.text.AppendText("unittalk getcharid(3),\""+s+"\",1;\t// self:hidden\n")
-			elif p in npcdata.keys():
-				if aid in npcdata[p].keys():
-					self.text.AppendText("unittalk getnpcid(0,\""+npcdata[p][aid][NPC.NAME]+"\"),\""+s+"\";\t// " +str(aid)+ "\n")
-			elif p in mobdata.keys():
-				if aid in mobdata[p].keys():
-					self.text.AppendText("unittalk '@mob_id,\""+s+"\";\t// " +str(aid)+ ":" +mobdata[p][aid][MOB.NAME]+ "\n")
+			elif p in npcdata.keys() and aid in npcdata[p].keys():
+				self.text.AppendText("unittalk getnpcid(0,\""+npcdata[p][aid][NPC.NAME]+"\"),\""+s+"\";\t// " +str(aid)+ "\n")
+			elif p in mobdata.keys() and aid in mobdata[p].keys():
+				self.text.AppendText("unittalk '@mob_id,\""+s+"\";\t// " +str(aid)+ ":" +mobdata[p][aid][MOB.NAME]+ "\n")
+			else:
+				self.text.AppendText("@unittalk \""+s+"\";\t// " +str(aid)+ "\n")
 		elif num == 0x08e:	#message
 			s = buf[4*2:p_len*2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
 			s = s.replace("\0","")
-			s = s.replace(chrdata['name'],"\"+strcharinfo(0)+\"")
+			if chrdata['name'] != 'unknown name':
+				s = s.replace(chrdata['name'],"\"+strcharinfo(0)+\"")
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("unittalk getcharid(3),\""+s+"\",1;\t// self:hidden\n")
 		elif num == 0x2c1:	#multicolormessage
 			s = buf[12*2:p_len*2-2]
@@ -1214,6 +1293,8 @@ class MARiA_Frame(wx.Frame):
 			color	= RFIFOL(buf,8)
 			color = (int(color,16) & 0x0000FF) >> 16 | (int(color,16) & 0x00FF00) | (int(color,16) & 0xFF0000) << 16;
 			p	= self.mapport.GetValue()
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
 					self.text.AppendText("@monstertalk \""+s+"\", color: " +str(color)+ ", id: " +str(aid)+ "\n")
@@ -1224,6 +1305,8 @@ class MARiA_Frame(wx.Frame):
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
 			aid	= RFIFOL(buf,4)
 			p	= self.mapport.GetValue()
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			if chrdata['aid'] == aid:
 				self.text.AppendText("showmessage \""+s+",\","";\t// self:hidden\n")
 			elif p in npcdata.keys():
@@ -1381,9 +1464,13 @@ class MARiA_Frame(wx.Frame):
 				self.text.AppendText("//settitle "+ t + ";\n// " +str(aid)+ "\n")
 		elif num == 0xa24:	#acievement update
 			nameid = RFIFOL(buf,16)
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("achievement {};\n".format(nameid))
 		elif num == 0xb13:	#itempreview
 			index = RFIFOW(buf,2) - 2
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("itempreview {};\n".format(index))
 		elif num == 0x1d6:	#mapproperty
 			type = RFIFOW(buf,2)

@@ -1,0 +1,13 @@
+//jRO
+charserver_port: 6121
+prontera_port: 5121
+
+//iRO
+charserver_port: 4500
+prontera_port: 4511
+map_port: 4512
+
+//iRO Transcendence
+charserver_port: 4500
+prontera_port: 4502
+map_port: 4501

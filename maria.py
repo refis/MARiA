@@ -13,7 +13,7 @@ import const
 
 MARiA_MAJOR_VERSION = 0
 MARiA_MINOR_VERSION = 0
-MARiA_MAJOR_REVISION = 17
+MARiA_MAJOR_REVISION = 18
 MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
 
 Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
@@ -1005,7 +1005,7 @@ class MARiA_Frame(wx.Frame):
 			if chrdata['aid'] == aid:
 				if self.scripttimer.IsChecked() == 1:
 					self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
-				self.text.AppendText("emotion "+str(type)+","";\t// self\n")
+				self.text.AppendText("emotion "+str(type)+",\"\";\t// self\n")
 			elif p in npcdata.keys():
 				if aid in npcdata[p].keys():
 					if self.scripttimer.IsChecked() == 1:
@@ -1024,7 +1024,7 @@ class MARiA_Frame(wx.Frame):
 			if chrdata['aid'] == aid:
 				if self.scripttimer.IsChecked() == 1:
 					self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
-				self.text.AppendText("misceffect "+str(type)+","";\t// self:" +str(n)+ "\n")
+				self.text.AppendText("misceffect "+str(type)+",\"\";\t// self:" +str(n)+ "\n")
 			elif p in npcdata.keys():
 				if aid in npcdata[p].keys():
 					if self.scripttimer.IsChecked() == 1:
@@ -1308,7 +1308,7 @@ class MARiA_Frame(wx.Frame):
 			if self.scripttimer.IsChecked() == 1:
 				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			if chrdata['aid'] == aid:
-				self.text.AppendText("showmessage \""+s+",\","";\t// self:hidden\n")
+				self.text.AppendText("showmessage \""+s+",\",\"\";\t// self:hidden\n")
 			elif p in npcdata.keys():
 				if aid in npcdata[p].keys():
 					self.text.AppendText("showmessage \""+s+"\",\""+npcdata[p][aid][NPC.NAME]+"\";\t// " +str(aid)+ "\n")

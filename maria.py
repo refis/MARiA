@@ -1024,17 +1024,17 @@ class MARiA_Frame(wx.Frame):
 			if chrdata['aid'] == aid:
 				if self.scripttimer.IsChecked() == 1:
 					self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
-				self.text.AppendText("misceffect "+str(type)+",\"\";\t// self:" +str(n)+ "\n")
+				self.text.AppendText("misceffect "+str(type)+",\"\";\t// self\n")
 			elif p in npcdata.keys():
 				if aid in npcdata[p].keys():
 					if self.scripttimer.IsChecked() == 1:
 						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
-					self.text.AppendText("misceffect "+str(type)+",\""+npcdata[p][aid][NPC.NAME]+"\";\t// " +str(aid)+ ":" +str(n)+ "\n")
+					self.text.AppendText("misceffect "+str(type)+",\""+npcdata[p][aid][NPC.NAME]+"\";\t// " +str(aid)+ "\n")
 			elif p in mobdata.keys():
 				if aid in mobdata[p].keys():
 					if self.scripttimer.IsChecked() == 1:
 						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
-					self.text.AppendText("@misceffect "+str(type)+",\""+mobdata[p][aid][MOB.NAME]+"\";\t// " +str(aid)+ ":" +str(n)+ "\n")
+					self.text.AppendText("@misceffect "+str(type)+",\""+mobdata[p][aid][MOB.NAME]+"\";\t// " +str(aid)+ "\n")
 		elif num == 0x144:	#viewpoint
 			aid		= RFIFOL(buf,2)
 			type	= RFIFOL(buf,6)

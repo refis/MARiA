@@ -1467,6 +1467,11 @@ class MARiA_Frame(wx.Frame):
 			if self.scripttimer.IsChecked() == 1:
 				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("achievement {};\n".format(nameid))
+		elif num == 0xab9:	#itempreview
+			index = RFIFOW(buf,2) - 2
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
+			self.text.AppendText("itempreview {};\n".format(index))
 		elif num == 0xb13:	#itempreview
 			index = RFIFOW(buf,2) - 2
 			if self.scripttimer.IsChecked() == 1:

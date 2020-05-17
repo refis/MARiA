@@ -1185,7 +1185,10 @@ class MARiA_Frame(wx.Frame):
 			s = s.replace("\0","")
 			x	= RFIFOW(buf,18)
 			y	= RFIFOW(buf,20)
-			if s[-4:] == ".gat":
+			#if s[-4:] == ".gat":
+			i = s.find('.gat')
+			if i >= 0:
+				s = s[:i+4]
 				aid = self.CheckNearNPC(chrdata['mapname'], chrdata['x'], chrdata['y']);
 				p = self.mapport.GetValue()
 				if aid >= 0:
@@ -1215,7 +1218,10 @@ class MARiA_Frame(wx.Frame):
 			x	= RFIFOW(buf,18)
 			y	= RFIFOW(buf,20)
 			port	= RFIFOW(buf,26)
-			if s[-4:] == ".gat":
+			#if s[-4:] == ".gat":
+			i = s.find('.gat')
+			if i >= 0:
+				s = s[:i+4]
 				aid = self.CheckNearNPC(chrdata['mapname'], chrdata['x'], chrdata['y']);
 				p = self.mapport.GetValue()
 				if aid >= 0:
@@ -1239,7 +1245,7 @@ class MARiA_Frame(wx.Frame):
 				self.th.setport(int(self.charport.GetValue()), int(self.mapport.GetValue()))
 				self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
 			else:
-				self.text.AppendText("@changemapserver Failed packet\n")
+				self.text.AppendText("@changemapserver Failed packet. \"{}\", x : {}, y : {}, port : {};\n".format(s, x, y, port))
 		elif num == 0x087:	#walk
 			x = int(((int(buf[8*2:8*2+2],16)&0xF)<<6) + (int(buf[9*2:9*2+2],16)>>2))
 			y = int(((int(buf[9*2:9*2+2],16)&0x3)<<8) + int(buf[10*2:10*2+2],16))

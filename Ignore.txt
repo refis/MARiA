@@ -82,6 +82,7 @@
 0x0196 8 //status_load
 0x0adf 8 //charname_req
 0x0a24 8 //acievement update
+0x0ab9 8 //itempreview
 0x0b13 8 //itempreview
 0x01d6 8 //mapproperty
 0x099b 8 //mapproperty_r

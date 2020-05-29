@@ -13,7 +13,7 @@ import const
 
 MARiA_MAJOR_VERSION = 0
 MARiA_MINOR_VERSION = 0
-MARiA_MAJOR_REVISION = 19
+MARiA_MAJOR_REVISION = 20
 MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
 
 Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
@@ -869,7 +869,7 @@ class MARiA_Frame(wx.Frame):
 							mobdata[p][aid][MOB.TICK] = prev
 						else:
 							mobdata[p][aid][MOB.TICK] = tick
-						self.text.AppendText("@nomalattack_lower(src: \"{}\"({}), dst: ({}), damage: {}, sDelay: {}, dDelay: {}, tick: {})\n".format(mobdata[p][aid][MOB.NAME],aid,dst,damage,sdelay,ddelay,tick))
+						self.text.AppendText("@nomalattack_lower(src: {}:\"{}\"({}), dst: ({}), damage: {}, sDelay: {}, dDelay: {}, tick: {})\n".format(mobdata[p][aid][MOB.CLASS],mobdata[p][aid][MOB.NAME],aid,dst,damage,sdelay,ddelay,tick))
 		elif num == 0x2e1 or num == 0x8c8:	#nomalattack
 			type = RFIFOB(buf,29) if num == 0x8c8 else RFIFOB(buf,28)
 			if type == 1 or type == 2 or type == 3:	#pickup/sitdown/standup motion
@@ -892,7 +892,7 @@ class MARiA_Frame(wx.Frame):
 							mobdata[p][aid][MOB.TICK] = prev
 						else:
 							mobdata[p][aid][MOB.TICK] = tick
-						self.text.AppendText("@nomalattack(src: \"{}\"({}), dst: ({}), damage: {}, sDelay: {}, dDelay: {}, tick: {})\n".format(mobdata[p][aid][MOB.NAME],aid,dst,damage,sdelay,ddelay,tick))
+						self.text.AppendText("@nomalattack(src: {}:\"{}\"({}), dst: ({}), damage: {}, sDelay: {}, dDelay: {}, tick: {})\n".format(mobdata[p][aid][MOB.CLASS],mobdata[p][aid][MOB.NAME],aid,dst,damage,sdelay,ddelay,tick))
 		elif num == 0x13e or num == 0x7fb:	#skill_casting
 			aid		= RFIFOL(buf,2)
 			dst		= RFIFOL(buf,6)
@@ -901,7 +901,9 @@ class MARiA_Frame(wx.Frame):
 			p		= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
-					self.text.AppendText("@skillcasting(src: \"{}\"({}), dst: {}, skill: \"{}\"({}), casttime: {})\n".format(mobdata[p][aid][MOB.NAME], aid, dst, getskill(skillid), skillid, tick))
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
+					self.text.AppendText("@skillcasting(src: {}:\"{}\"({}), dst: {}, skill: \"{}\"({}), casttime: {})\n".format(mobdata[p][aid][MOB.CLASS],mobdata[p][aid][MOB.NAME], aid, dst, getskill(skillid), skillid, tick))
 		elif num == 0x1de:	#skill_damage
 			skillid	= RFIFOW(buf,2)
 			aid		= RFIFOL(buf,4)
@@ -916,7 +918,9 @@ class MARiA_Frame(wx.Frame):
 			p		= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
-					self.text.AppendText("@skillattack(src: \"{}\"({}), dst: ({}), skill: \"{}\"({}), skill_lv: {}, damage: {}, sDelay: {}, dDelay: {}, div: {}, hit: {}, tick: {})\n".format(mobdata[p][aid][MOB.NAME],aid,dst,getskill(skillid),skillid,skilllv,damage,sdelay,ddelay,div_,hit_,tick))
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
+					self.text.AppendText("@skillattack(src: {}:\"{}\"({}), dst: ({}), skill: \"{}\"({}), skill_lv: {}, damage: {}, sDelay: {}, dDelay: {}, div: {}, hit: {}, tick: {})\n".format(mobdata[p][aid][MOB.CLASS],mobdata[p][aid][MOB.NAME],aid,dst,getskill(skillid),skillid,skilllv,damage,sdelay,ddelay,div_,hit_,tick))
 		elif num == 0x11a:	#skill_nodamage
 			skillid	= RFIFOW(buf,2)
 			val		= RFIFOW(buf,4)
@@ -925,7 +929,9 @@ class MARiA_Frame(wx.Frame):
 			p		= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
-					self.text.AppendText("@skillnodamage(src: \"{}\"({}), dst: ({}), skill: \"{}\"({}), val: {})\n".format(mobdata[p][aid][MOB.NAME], aid, dst, getskill(skillid), skillid, val))
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
+					self.text.AppendText("@skillnodamage(src: {}:\"{}\"({}), dst: ({}), skill: \"{}\"({}), val: {})\n".format(mobdata[p][aid][MOB.CLASS],mobdata[p][aid][MOB.NAME], aid, dst, getskill(skillid), skillid, val))
 		elif num == 0x9cb:	#skill_nodamage
 			skillid	= RFIFOW(buf,2)
 			val		= RFIFOL(buf,4)
@@ -934,16 +940,22 @@ class MARiA_Frame(wx.Frame):
 			p		= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
-					self.text.AppendText("@skillnodamage(src: \"{}\"({}), dst: ({}), skill: \"{}\"({}), val: {})\n".format(mobdata[p][aid][MOB.NAME], aid, dst, getskill(skillid), skillid, val))
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
+					self.text.AppendText("@skillnodamage(src: {}:\"{}\"({}), dst: ({}), skill: \"{}\"({}), val: {})\n".format(mobdata[p][aid][MOB.CLASS],mobdata[p][aid][MOB.NAME], aid, dst, getskill(skillid), skillid, val))
 		elif num == 0x117:	#skill_poseffect
 			skillid	= RFIFOW(buf,2)
 			aid		= RFIFOL(buf,4)
 			val		= RFIFOW(buf,8)
+			x		= RFIFOW(buf,10)
+			y		= RFIFOW(buf,12)
 			tick	= RFIFOL(buf,14)
 			p		= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
-					self.text.AppendText("@skillposeffect(src: \"{}\"({}), skill: \"{}\"({}), val: {}, tick: {})\n".format(mobdata[p][aid][MOB.NAME], aid, getskill(skillid), skillid, val, tick))
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
+					self.text.AppendText("@skillposeffect(src: {}:\"{}\"({}), skill: \"{}\"({}), val: {}, pos({}, {}), tick: {})\n".format(mobdata[p][aid][MOB.CLASS],mobdata[p][aid][MOB.NAME], aid, getskill(skillid), skillid, val, x, y, tick))
 		elif num == 0x9ca:	#skill_unit
 			aid		= RFIFOL(buf,8)
 			x		= RFIFOW(buf,12)
@@ -953,6 +965,8 @@ class MARiA_Frame(wx.Frame):
 			p		= self.mapport.GetValue()
 			if p in mobdata.keys():
 				if aid in mobdata[p].keys():
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 					self.text.AppendText("@skillunit_appeared(\""+mobdata[p][aid][MOB.NAME]+"\"(" +str(aid)+ "), pos("+str(x)+", "+str(y)+"), unit_id: "+str(hex(unit_id))+"), skill_lv: "+str(skilllv)+")\n")
 		elif num == 0x080:	#clear_unit
 			aid		= RFIFOL(buf,2)
@@ -1501,8 +1515,9 @@ class MARiA_Frame(wx.Frame):
 		elif num == 0xa36:	#hp_info_tiny
 			aid	= RFIFOL(buf,2)
 			per	= RFIFOB(buf,6)
+			per	= int(per) * 5
 			p	= self.mapport.GetValue()
-			self.text.AppendText("@hp_info_tiny name: "+ mobdata[p][aid][MOB.NAME] + ", class: "+ str(mobdata[p][aid][MOB.CLASS]) +", per: "+ str(hex(per)) +"\n")
+			self.text.AppendText("@hp_info_tiny name: "+ mobdata[p][aid][MOB.NAME] + ", class: "+ str(mobdata[p][aid][MOB.CLASS]) +", per: "+ str(per) +"%\n")
 		elif num == 0x283:	#account_id
 			aid	= RFIFOL(buf,2)
 			chrdata['aid'] = aid

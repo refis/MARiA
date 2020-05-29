@@ -42,7 +42,7 @@
 0x011a 8 //skill_nodamage
 0x09cb 8 //skill_nodamage
 0x0117 8 //skill_poseffect
-0x09ca 8 //skill_unit
+//0x09ca 8 //skill_unit
 0x0080 8 //clear_unit
 0x0acc 8 //gainexp
 0x0229 8 //changeoption
@@ -89,6 +89,7 @@
 0x0283 8 //account_id
 0x0b09 8 //inventory
 0x0b0a 8 //inventory
+0x0a36 8 //hp_info_tiny
 
 //0x0080 1 //clear_unit
 //0x0087 1 //walk

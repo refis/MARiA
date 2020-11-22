@@ -13,7 +13,7 @@ import const
 
 MARiA_MAJOR_VERSION = 0
 MARiA_MINOR_VERSION = 0
-MARiA_MAJOR_REVISION = 20
+MARiA_MAJOR_REVISION = 21
 MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
 
 Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
@@ -417,7 +417,7 @@ class MARiA_Frame(wx.Frame):
 	def OnClearCache(self, event):
 		global chrdata
 		chrdata.clear()
-		chrdata = {"aid": 0, "mapname": "unknown.gat", "x": 0, "y": 0, "BaseExp": 0, "JobExp": 0, "Zeny": 0}
+		chrdata = {"aid": 0, "name": "unknown name", "mapname": "unknown.gat", "x": 0, "y": 0, "BaseExp": 0, "JobExp": 0, "Zeny": 0}
 		global mobdata
 		mobdata.clear()
 		mobdata = {}
@@ -561,7 +561,7 @@ class MARiA_Frame(wx.Frame):
 				x		= RFIFOPOSX(buf,63)
 				y		= RFIFOPOSY(buf,63)
 				dir		= RFIFOPOSD(buf,63)
-				if type==5 or type==6:
+				if type==5 or type==6 or type==12:
 					i = 83
 					s = buf[i*2:p_len*2]
 					opt = ""
@@ -586,7 +586,7 @@ class MARiA_Frame(wx.Frame):
 						else:
 							self.text.AppendText("@spawn(type: BL_MOB, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
 							mobdata[p] = { aid: [m,x,y,s,view,speed,0] }
-					elif type == 6:
+					elif type == 6 or type==12:
 						if p in npcdata.keys():
 							if aid in npcdata[p].keys():
 								if npcdata[p][aid][NPC.CLASS] != view:
@@ -618,7 +618,7 @@ class MARiA_Frame(wx.Frame):
 				x		= RFIFOPOSX(buf,63)
 				y		= RFIFOPOSY(buf,63)
 				dir		= RFIFOPOSD(buf,63)
-				if type==5 or type==6:
+				if type==5 or type==6 or type==12:
 					i = 84
 					s = buf[i*2:p_len*2]
 					opt = ""
@@ -643,7 +643,7 @@ class MARiA_Frame(wx.Frame):
 						else:
 							self.text.AppendText("@spawn(type: BL_MOB, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
 							mobdata[p] = { aid: [m,x,y,s,view,speed,0] }
-					elif type == 6:
+					elif type == 6 or type==12:
 						if p in npcdata.keys():
 							if aid in npcdata[p].keys():
 								if npcdata[p][aid][NPC.CLASS] != view:
@@ -675,7 +675,7 @@ class MARiA_Frame(wx.Frame):
 				x		= RFIFOPOSX(buf,67)
 				y		= RFIFOPOSY(buf,67)
 				dir		= RFIFOPOSD(buf,67)
-				if type==5 or type==6:
+				if type==5 or type==6 or type==12:
 					i = 90
 					s = buf[i*2:p_len*2]
 					opt = ""
@@ -708,6 +708,16 @@ class MARiA_Frame(wx.Frame):
 								npcdata[p][aid] = [m,x,y,dir,s,view,option]
 						else:
 							self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\tscript\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
+							npcdata[p] = { aid: [m,x,y,dir,s,view,option] }
+					elif type == 12:
+						if p in npcdata.keys():
+							if aid in npcdata[p].keys():
+								self.text.AppendText("@move(type: BL_WALKNPC, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
+							else:
+								self.text.AppendText("@move(type: BL_WALKNPC, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
+								npcdata[p][aid] = [m,x,y,dir,s,view,option]
+						else:
+							self.text.AppendText("@move(type: BL_WALKNPC, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
 							npcdata[p] = { aid: [m,x,y,dir,s,view,option] }
 		elif num == 0x0b4:	#mes
 			s = buf[8*2:p_len*2-2]
@@ -1533,6 +1543,20 @@ class MARiA_Frame(wx.Frame):
 					amount = RFIFOW(buf, i*c+12) if num == 0xb09 else 1
 					inventory['item'][idx] = {"Nameid": nameid, "Amount": amount}
 					i += 1
+		elif num == 0x446:	#showevent
+			aid	= RFIFOL(buf,2)
+			x	= RFIFOW(buf,6)
+			y	= RFIFOW(buf,8)
+			state	= RFIFOW(buf,10)
+			type	= RFIFOW(buf,12)
+			p	= self.mapport.GetValue()
+			if p in npcdata.keys():
+				if aid in npcdata[p].keys():
+					self.text.AppendText("showevent "+str(state)+", "+str(type)+", "+npcdata[p][aid][NPC.NAME]+";\t// " +str(aid)+ ": "+str(x)+", "+str(y)+"\n")
+				else:
+					self.text.AppendText("@showevent "+str(state)+", "+str(type)+";\t// " +str(aid)+ ": "+str(x)+", "+str(y)+"\n")
+			else:
+				self.text.AppendText("@showevent "+str(state)+", "+str(type)+"\";\t// " +str(aid)+ ": "+str(x)+", "+str(y)+"\n")
 		elif Configuration['Show_OtherPacket'] == 1:
 			self.text.AppendText("@packet "+ n + ".\n")
 

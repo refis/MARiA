@@ -13,7 +13,7 @@ import const
 
 MARiA_MAJOR_VERSION = 0
 MARiA_MINOR_VERSION = 0
-MARiA_MAJOR_REVISION = 21
+MARiA_MAJOR_REVISION = 24
 MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
 
 Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
@@ -52,6 +52,7 @@ SkillName = const.SKILLNAME
 EFST = const.EFST
 NPC = const.NPC
 MOB = const.MOB
+RANDOPT = const.RANDOPT
 
 RFIFOS = lambda p, pos1, pos2: p[pos1*2:pos2*2]
 RFIFOB = lambda p, pos: int(p[pos*2:pos*2+2],16)
@@ -65,6 +66,7 @@ RFIFOPOSD = lambda p, pos: (int(p[pos*2+4:pos*2+6],16)&0xF)
 gettick = lambda : time.time()
 getskill = lambda n: n if not n in SkillName else SkillName[n]
 getefst = lambda n: n if not n in EFST else EFST[n]
+getrandopt = lambda n: n if not n in RANDOPT else RANDOPT[n]
 
 def read_config_db():
 	path = './Config.txt'
@@ -274,6 +276,9 @@ class MARiA_Frame(wx.Frame):
 
 		edit.AppendSeparator()
 
+		moblist = edit.Append(-1, "モンスター配置詳細")
+		self.Bind(wx.EVT_MENU, self.OnMonsterList, moblist)
+
 		menubar.Append(file, '&File')
 		menubar.Append(edit, '&Edit')
 		self.SetMenuBar(menubar)
@@ -442,6 +447,32 @@ class MARiA_Frame(wx.Frame):
 
 	def OnClearScript(self, event):
 		self.text.Clear()
+
+	def OnMonsterList(self, event):
+		mapmobs = {}
+		mapmobs.setdefault('unknown.gat',{})
+		mapmobs['unknown.gat'].setdefault('0',{})
+		mapmobs['unknown.gat']['0'] = ["unknown name", 0]
+		for p in mobdata.keys():
+			for aid in mobdata[p].keys():
+				if aid > 0:
+					#if mapmobs[mobdata[p][aid][MOB.MAP]][mobdata[p][aid][MOB.CLASS]][1]:
+						#mapmobs[map][class_][2] += 1
+					#else:
+					#mapmobs[mobdata[p][aid][MOB.MAP]][mobdata[p][aid][MOB.CLASS]] = [mobdata[p][aid][MOB.NAME], 1]
+					if mobdata[p][aid][MOB.MAP] in mapmobs:
+						if mobdata[p][aid][MOB.CLASS] in mapmobs[mobdata[p][aid][MOB.MAP]]:
+							mapmobs[mobdata[p][aid][MOB.MAP]][mobdata[p][aid][MOB.CLASS]][1] += 1
+						else:
+							mapmobs[mobdata[p][aid][MOB.MAP]][mobdata[p][aid][MOB.CLASS]] = [ mobdata[p][aid][MOB.NAME],1 ]
+					else:
+						mapmobs[mobdata[p][aid][MOB.MAP]] = { mobdata[p][aid][MOB.CLASS]: [ mobdata[p][aid][MOB.NAME],1 ] }
+		for map in mapmobs.keys():
+			self.text.AppendText("//------------------------------------------------------------\n")
+			self.text.AppendText("// {}\n".format(map))
+			for class_ in mapmobs[map].keys():
+				if class_ != '0':
+					self.text.AppendText("{},0,0,0,0\tmonster\t{}\t{},{},0,0,0\n".format(map,mapmobs[map][class_][0],class_,mapmobs[map][class_][1]))
 
 	def CheckNearNPC(self, m, x, y):
 		p = self.mapport.GetValue()
@@ -1181,7 +1212,7 @@ class MARiA_Frame(wx.Frame):
 					j += 1
 		elif num == 0x71:	#charactor_select
 			aid	= RFIFOL(buf,2)
-			s = buf[2*6:p_len*2-20]
+			s = buf[2*6:p_len*2-16]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
 			s = s.replace("\0","")
 			port	= RFIFOW(buf,26)
@@ -1346,20 +1377,60 @@ class MARiA_Frame(wx.Frame):
 				if aid in mobdata[p].keys():
 					self.text.AppendText("@showmessage \""+s+"\";\t// " +str(aid)+ ":" +mobdata[p][aid][MOB.NAME]+ "\n")
 		elif num == 0xa37:	#getitem
+			upgrade = 0
 			idx		= RFIFOW(buf,2)
 			amount	= RFIFOW(buf,4)
 			itemid	= RFIFOL(buf,6)
+			limit	= RFIFOL(buf,35)
+
+			equip	= RFIFOL(buf,29)
+			if equip > 0:
+				identify	= RFIFOB(buf,10)
+				refine	= RFIFOB(buf,12)
+				card1	= RFIFOL(buf,13)
+				card2	= RFIFOL(buf,17)
+				card3	= RFIFOL(buf,21)
+				card4	= RFIFOL(buf,25)
+				opt1id	= RFIFOW(buf,41)
+				opt1val	= RFIFOW(buf,43)
+				opt2id	= RFIFOW(buf,46)
+				opt2val	= RFIFOW(buf,48)
+				opt3id	= RFIFOW(buf,51)
+				opt3val	= RFIFOW(buf,53)
+				opt4id	= RFIFOW(buf,56)
+				opt4val	= RFIFOW(buf,58)
+				opt5id	= RFIFOW(buf,61)
+				opt5val	= RFIFOW(buf,63)
+				if refine > 0 or card1 > 0 or card2 > 0 or card3 > 0 or card4 > 0:
+					upgrade = 1
+				if opt1id > 0:
+					upgrade = 2
 			if idx in inventory['item'].keys():
 				nameid = inventory['item'][idx]["Nameid"]
 				if itemid == nameid:
 					n = inventory['item'][idx]["Amount"]
 					inventory['item'][idx]["Amount"] = n + amount
-					self.text.AppendText("getitem {},{};\n".format(itemid,amount))
+					if upgrade == 2:
+						self.text.AppendText("getoptitem {},{},{},0,{},{},{},{},0,{};\t//opt: {},{}, {},{}, {},{}, {},{}, {},{};\n".format(itemid,identify,refine,card1,card2,card3,card4,limit,getrandopt(opt1id),opt1val,getrandopt(opt2id),opt2val,getrandopt(opt3id),opt3val,getrandopt(opt4id),opt4val,getrandopt(opt5id),opt5val))
+					elif upgrade == 1:
+						self.text.AppendText("getitem2 {},{},{},{},0,{},{},{},{},{};\n".format(itemid,amount,identify,refine,card1,card2,card3,card4,limit))
+					else:
+						self.text.AppendText("getitem {},{};\n".format(itemid,amount))
 				else:
-					self.text.AppendText("@getitem {},{};\t//unexpected error\n".format(itemid,amount))
+					if upgrade == 2:
+						self.text.AppendText("@getoptitem {},{},{},0,{},{},{},{},0,{};\t//unexpected error opt: {},{}, {},{}, {},{}, {},{}, {},{};\n".format(itemid,identify,refine,card1,card2,card3,card4,limit,getrandopt(opt1id),opt1val,getrandopt(opt2id),opt2val,getrandopt(opt3id),opt3val,getrandopt(opt4id),opt4val,getrandopt(opt5id),opt5val))
+					elif upgrade == 1:
+						self.text.AppendText("@getitem2 {},{},{},{},0,{},{},{},{},{};\t//unexpected error\n".format(itemid,amount,identify,refine,card1,card2,card3,card4,limit))
+					else:
+						self.text.AppendText("@getitem {},{};\t//unexpected error\n".format(itemid,amount))
 			else:
 				inventory['item'][idx] = {"Nameid": itemid, "Amount": amount}
-				self.text.AppendText("getitem {},{};\n".format(itemid,amount))
+				if upgrade == 2:
+					self.text.AppendText("getoptitem {},{},{},0,{},{},{},{},0,{};\t//opt: {},{}, {},{}, {},{}, {},{}, {},{};\n".format(itemid,identify,refine,card1,card2,card3,card4,limit,getrandopt(opt1id),opt1val,getrandopt(opt2id),opt2val,getrandopt(opt3id),opt3val,getrandopt(opt4id),opt4val,getrandopt(opt5id),opt5val))
+				elif upgrade == 1:
+					self.text.AppendText("getitem2 {},{},{},{},0,{},{},{},{},{};\n".format(itemid,amount,identify,refine,card1,card2,card3,card4,limit))
+				else:
+					self.text.AppendText("getitem {},{};\n".format(itemid,amount))
 		elif num == 0x0af or num == 0x229:	#delitem
 
 			idx		= RFIFOW(buf,2)

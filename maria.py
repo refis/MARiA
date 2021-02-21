@@ -13,7 +13,7 @@ import const
 
 MARiA_MAJOR_VERSION = 0
 MARiA_MINOR_VERSION = 0
-MARiA_MAJOR_REVISION = 24
+MARiA_MAJOR_REVISION = 26
 MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
 
 Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
@@ -42,6 +42,7 @@ inventory = {}
 inventory.setdefault('item',{})
 inventory['item'].setdefault(0,{})
 inventory['item'][0] = dummy_inv
+waitingroom = {}
 
 TargetIP = 0
 IgnorePacketAll = 0
@@ -276,7 +277,7 @@ class MARiA_Frame(wx.Frame):
 
 		edit.AppendSeparator()
 
-		moblist = edit.Append(-1, "モンスター配置詳細")
+		moblist = edit.Append(-1, "モンスター情報統計")
 		self.Bind(wx.EVT_MENU, self.OnMonsterList, moblist)
 
 		menubar.Append(file, '&File')
@@ -881,10 +882,10 @@ class MARiA_Frame(wx.Frame):
 				+ 6*(dx<0  and dy==0) \
 				+ 7*(dx<0  and dy<0)
 			dist = abs(dx) if abs(dx) > abs(dy) else abs(dy)
-			chrdata['x'] = x
-			chrdata['y'] = y
-			self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
 			if chrdata['aid'] == aid:
+				chrdata['x'] = x
+				chrdata['y'] = y
+				self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
 				if self.scripttimer.IsChecked() == 1:
 					self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 				self.text.AppendText("pushpc {}, {};\n".format(dir, dist))
@@ -1108,10 +1109,14 @@ class MARiA_Frame(wx.Frame):
 				if aid in npcdata[p].keys():
 					s_len	= RFIFOW(buf,2)
 					chatid	= RFIFOL(buf,8)
-					s = buf[17*2:s_len*2]
-					s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
-					s = s.replace("\0","")
-					self.text.AppendText("waitingroom \""+s+"\", 0;\t// " +str(aid)+ "\n")
+					if chatid in waitingroom.keys():
+						pass
+					else:
+						s = buf[17*2:s_len*2]
+						s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
+						s = s.replace("\0","")
+						waitingroom[chatid] = 1
+						self.text.AppendText("waitingroom \""+s+"\", 0;\t// " +str(aid)+ "\n")
 		elif num == 0x192:	#mapcell
 			x		= RFIFOW(buf,2)
 			y		= RFIFOW(buf,4)
@@ -1311,9 +1316,10 @@ class MARiA_Frame(wx.Frame):
 			aid	= RFIFOL(buf,2)
 			x	= RFIFOW(buf,6)
 			y	= RFIFOW(buf,8)
-			chrdata['x'] = x
-			chrdata['y'] = y
-			self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
+			if chrdata['aid'] == aid:
+				chrdata['x'] = x
+				chrdata['y'] = y
+				self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
 		elif num == 0x2eb or num == 0xa18:	#authok
 			x	= RFIFOPOSX(buf,6)
 			y	= RFIFOPOSY(buf,6)

@@ -13,7 +13,7 @@ import const
 
 MARiA_MAJOR_VERSION = 0
 MARiA_MINOR_VERSION = 0
-MARiA_MAJOR_REVISION = 26
+MARiA_MAJOR_REVISION = 28
 MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
 
 Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
@@ -513,12 +513,22 @@ class MARiA_Frame(wx.Frame):
 					else:
 						print("[Error] unknown ultra high packet, id: ",format(num, '#06x'),", prev:",format(self.prev_num, '#06x'),", clear buf: ",buf,"\n")
 						self.btext.AppendText("\nultrahigh_packetid_" + format(num, '#06x')+", prev:"+format(self.prev_num, '#06x'))
+						self.text.AppendText("//------------------------------------------------------------\n")
+						self.text.AppendText(buf + "\n")
+						self.text.AppendText("//------------------------------------------------------------\n")
 						self.buf = buf = ''
 						break
 				else:
-					print("[Error] unknown packet len: ",format(num, '#06x'),", prev:",format(self.prev_num, '#06x'),", set packet_len: 2\n")
-					self.btext.AppendText("\nunknown_packetlength" + format(num, '#06x')+", prev:"+format(self.prev_num, '#06x'))
-					packet_len = 2
+					snum = RFIFOW(buf,1)
+					if snum in Packetlen.keys():
+						print("[Info] unknown 1 byte skiped, result:",format(snum, '#06x'),", prev:",format(self.prev_num, '#06x'),", skiped byte: 0x",buf[:2],"\n")
+						num = snum
+						packet_len = Packetlen[num]
+						buf = buf[2:total_len]	#1byte skip
+					else:
+						print("[Error] unknown packet len: ",format(num, '#06x'),", prev:",format(self.prev_num, '#06x'),", set packet_len: 2\n")
+						self.btext.AppendText("\nunknown_packetlength" + format(num, '#06x')+", prev:"+format(self.prev_num, '#06x'))
+						packet_len = 2
 			if packet_len == -1:
 				packet_len = RFIFOW(buf,2)
 				if packet_len <= 0:
@@ -613,8 +623,13 @@ class MARiA_Frame(wx.Frame):
 							if aid in mobdata[p].keys():
 								pass
 							else:
+								cflag = 0
+								if aid > 10000:
+									cflag = len(self.text.GetValue())
 								self.text.AppendText("@spawn(type: BL_MOB, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
 								mobdata[p][aid] = [m,x,y,s,view,speed,0]
+								if cflag > 0:
+									self.text.SetStyle(cflag, len(self.text.GetValue()), wx.TextAttr("red", "blue"))
 						else:
 							self.text.AppendText("@spawn(type: BL_MOB, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
 							mobdata[p] = { aid: [m,x,y,s,view,speed,0] }
@@ -670,8 +685,13 @@ class MARiA_Frame(wx.Frame):
 							if aid in mobdata[p].keys():
 								pass
 							else:
+								cflag = 0
+								if aid > 10000:
+									cflag = len(self.text.GetValue())
 								self.text.AppendText("@spawn(type: BL_MOB, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
 								mobdata[p][aid] = [m,x,y,s,view,speed,0]
+								if cflag > 0:
+									self.text.SetStyle(cflag, len(self.text.GetValue()), wx.TextAttr("red", "blue"))
 						else:
 							self.text.AppendText("@spawn(type: BL_MOB, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
 							mobdata[p] = { aid: [m,x,y,s,view,speed,0] }
@@ -726,8 +746,13 @@ class MARiA_Frame(wx.Frame):
 							if aid in mobdata[p].keys():
 								pass
 							else:
+								cflag = 0
+								if aid > 10000:
+									cflag = len(self.text.GetValue())
 								self.text.AppendText("@move(type: BL_MOB, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
 								mobdata[p][aid] = [m,x,y,s,view,speed,0]
+								if cflag > 0:
+									self.text.SetStyle(cflag, len(self.text.GetValue()), wx.TextAttr("red", "blue"))
 						else:
 							self.text.AppendText("@move(type: BL_MOB, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
 							mobdata[p] = { aid: [m,x,y,s,view,speed,0] }
@@ -779,8 +804,10 @@ class MARiA_Frame(wx.Frame):
 				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			if len(l) == 1:
 				self.text.AppendText("menu \""+s+"\",-;\n")
+			elif len(l) == 2:
+				self.text.AppendText("if(select(\""+s.replace(':','\",\"')+"\") == 2) {\n")
 			else:
-				self.text.AppendText("select(\""+s.replace(':','\",\"')+"\")\n")
+				self.text.AppendText("switch(select(\""+s.replace(':','\",\"')+"\")) {\n")
 		elif num == 0x142:	#input num
 			if self.scripttimer.IsChecked() == 1:
 				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
@@ -1264,7 +1291,7 @@ class MARiA_Frame(wx.Frame):
 							npcdata[p][aid][NPC.MAP],npcdata[p][aid][NPC.POSX],npcdata[p][aid][NPC.POSY],npcdata[p][aid][NPC.NAME], s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
 						warpnpc[p] = { aid: npcdata[p][aid][NPC.NAME] }
 				else:
-					self.text.AppendText("@changemap \"{}\", x : {}, y : {};\t// from: {}({}, {})\n".format(s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
+					self.text.AppendText("warp \"{}\", {}, {};\t// from: {}({}, {})\n".format(s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
 				chrdata['mapname'] = s
 				chrdata['x'] = x
 				chrdata['y'] = y
@@ -1297,7 +1324,7 @@ class MARiA_Frame(wx.Frame):
 							npcdata[p][aid][NPC.MAP],npcdata[p][aid][NPC.POSX],npcdata[p][aid][NPC.POSY],npcdata[p][aid][NPC.NAME], s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
 						warpnpc[p] = { aid: [npcdata[p][aid][NPC.NAME]] }
 				else:
-					self.text.AppendText("@changemapserver \"{}\", x : {}, y : {}, port : {};\t// from: {}({}, {})\n".format(s, x, y, port, chrdata['mapname'], chrdata['x'], chrdata['y']))
+					self.text.AppendText("warp \"{}\", {}, {};\t// from: {}({}, {}) port : {}\n".format(s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y'], port))
 				chrdata['mapname'] = s
 				chrdata['x'] = x
 				chrdata['y'] = y

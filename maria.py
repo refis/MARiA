@@ -13,7 +13,7 @@ import const
 
 MARiA_MAJOR_VERSION = 0
 MARiA_MINOR_VERSION = 0
-MARiA_MAJOR_REVISION = 28
+MARiA_MAJOR_REVISION = 31
 MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
 
 Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
@@ -250,12 +250,14 @@ class MARiA_Frame(wx.Frame):
 		item_2 = wx.MenuItem(file, -1, 'rAthena:ToDo', kind=wx.ITEM_RADIO)
 		item_3 = wx.MenuItem(file, -1, 'Hercules:ToDo', kind=wx.ITEM_RADIO)
 		self.scripttimer = wx.MenuItem(file, -1, 'スクリプトタイマーを表示', kind=wx.ITEM_CHECK)
+		self.hiddenbattle = wx.MenuItem(file, -1, '戦闘ログを非表示', kind=wx.ITEM_CHECK)
 		item_5 = wx.MenuItem(file, -1, 'ToDo', kind=wx.ITEM_CHECK)
 		file.Append(item_1)
 		file.Append(item_2)
 		file.Append(item_3)
 		file.AppendSeparator()
 		file.Append(self.scripttimer)
+		file.Append(self.hiddenbattle)
 		file.Append(item_5)
 
 		reloadignore = edit.Append(-1, "IgnorePacket再読み込み")
@@ -377,7 +379,7 @@ class MARiA_Frame(wx.Frame):
 			if self.timerlock == 0:
 				self.timerlockcnt = 0
 				data = self.th.readdata(self.bufcnt)
-				if data != "":
+				if len(data) > 1:
 					self.bufcnt += 1
 					self.buf += data
 					self.GetPacket()
@@ -513,9 +515,9 @@ class MARiA_Frame(wx.Frame):
 					else:
 						print("[Error] unknown ultra high packet, id: ",format(num, '#06x'),", prev:",format(self.prev_num, '#06x'),", clear buf: ",buf,"\n")
 						self.btext.AppendText("\nultrahigh_packetid_" + format(num, '#06x')+", prev:"+format(self.prev_num, '#06x'))
-						self.text.AppendText("//------------------------------------------------------------\n")
-						self.text.AppendText(buf + "\n")
-						self.text.AppendText("//------------------------------------------------------------\n")
+#						self.text.AppendText("//------------------------------------------------------------\n")
+#						self.text.AppendText(buf + "\n")
+#						self.text.AppendText("//------------------------------------------------------------\n")
 						self.buf = buf = ''
 						break
 				else:
@@ -655,6 +657,8 @@ class MARiA_Frame(wx.Frame):
 						else:
 							self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\tscript\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
 							npcdata[p] = { aid: [m,x,y,dir,s,view,option] }
+				elif type==9:
+					self.text.AppendText("@spawn(type: BL_MERC, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+")\n")
 		elif num == 0x9ff:	#idle
 			if p_len > 84:
 				type	= RFIFOB(buf,4)
@@ -909,7 +913,9 @@ class MARiA_Frame(wx.Frame):
 				+ 6*(dx<0  and dy==0) \
 				+ 7*(dx<0  and dy<0)
 			dist = abs(dx) if abs(dx) > abs(dy) else abs(dy)
-			if chrdata['aid'] == aid:
+			if self.hiddenbattle.IsChecked() == 1:
+				pass
+			elif chrdata['aid'] == aid:
 				chrdata['x'] = x
 				chrdata['y'] = y
 				self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
@@ -918,7 +924,9 @@ class MARiA_Frame(wx.Frame):
 				self.text.AppendText("pushpc {}, {};\n".format(dir, dist))
 		elif num == 0x08a:	#nomalattack
 			type	= RFIFOB(buf,26)
-			if type == 1 or type == 2 or type == 3:	#pickup/sitdown/standup motion
+			if self.hiddenbattle.IsChecked() == 1:
+				pass
+			elif type == 1 or type == 2 or type == 3:	#pickup/sitdown/standup motion
 				pass
 			else:
 				aid		= RFIFOL(buf,2)
@@ -941,7 +949,9 @@ class MARiA_Frame(wx.Frame):
 						self.text.AppendText("@nomalattack_lower(src: {}:\"{}\"({}), dst: ({}), damage: {}, sDelay: {}, dDelay: {}, tick: {})\n".format(mobdata[p][aid][MOB.CLASS],mobdata[p][aid][MOB.NAME],aid,dst,damage,sdelay,ddelay,tick))
 		elif num == 0x2e1 or num == 0x8c8:	#nomalattack
 			type = RFIFOB(buf,29) if num == 0x8c8 else RFIFOB(buf,28)
-			if type == 1 or type == 2 or type == 3:	#pickup/sitdown/standup motion
+			if self.hiddenbattle.IsChecked() == 1:
+				pass
+			elif type == 1 or type == 2 or type == 3:	#pickup/sitdown/standup motion
 				pass
 			else:
 				aid		= RFIFOL(buf,2)
@@ -968,7 +978,9 @@ class MARiA_Frame(wx.Frame):
 			skillid	= RFIFOW(buf,14)
 			tick	= RFIFOL(buf,20)
 			p		= self.mapport.GetValue()
-			if p in mobdata.keys():
+			if self.hiddenbattle.IsChecked() == 1:
+				pass
+			elif p in mobdata.keys():
 				if aid in mobdata[p].keys():
 					if self.scripttimer.IsChecked() == 1:
 						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
@@ -985,33 +997,54 @@ class MARiA_Frame(wx.Frame):
 			div_	= RFIFOW(buf,30)
 			hit_	= RFIFOB(buf,32)
 			p		= self.mapport.GetValue()
-			if p in mobdata.keys():
+			if self.hiddenbattle.IsChecked() == 1:
+				pass
+			elif p in mobdata.keys():
 				if aid in mobdata[p].keys():
 					if self.scripttimer.IsChecked() == 1:
 						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 					self.text.AppendText("@skillattack(src: {}:\"{}\"({}), dst: ({}), skill: \"{}\"({}), skill_lv: {}, damage: {}, sDelay: {}, dDelay: {}, div: {}, hit: {}, tick: {})\n".format(mobdata[p][aid][MOB.CLASS],mobdata[p][aid][MOB.NAME],aid,dst,getskill(skillid),skillid,skilllv,damage,sdelay,ddelay,div_,hit_,tick))
+			elif p in npcdata.keys():
+				if aid in npcdata[p].keys():
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
+					self.text.AppendText("@skillattack_effect(src: \"{}\"({}), dst: ({}), skill: \"{}\"({}), skill_lv: {}, damage: {}, sDelay: {}, dDelay: {}, div: {}, hit: {}, tick: {})\n".format(npcdata[p][aid][NPC.NAME],aid,dst,getskill(skillid),skillid,skilllv,damage,sdelay,ddelay,div_,hit_,tick))
 		elif num == 0x11a:	#skill_nodamage
 			skillid	= RFIFOW(buf,2)
 			val		= RFIFOW(buf,4)
 			dst		= RFIFOL(buf,6)
 			aid		= RFIFOL(buf,10)
 			p		= self.mapport.GetValue()
-			if p in mobdata.keys():
+			if self.hiddenbattle.IsChecked() == 1:
+				pass
+			elif p in mobdata.keys():
 				if aid in mobdata[p].keys():
 					if self.scripttimer.IsChecked() == 1:
 						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 					self.text.AppendText("@skillnodamage(src: {}:\"{}\"({}), dst: ({}), skill: \"{}\"({}), val: {})\n".format(mobdata[p][aid][MOB.CLASS],mobdata[p][aid][MOB.NAME], aid, dst, getskill(skillid), skillid, val))
+			elif p in npcdata.keys():
+				if aid in npcdata[p].keys():
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
+					self.text.AppendText("@skillnodamage_effect(src: \"{}\"({}), dst: ({}), skill: \"{}\"({}), val: {})\n".format(npcdata[p][aid][NPC.NAME],aid,dst,getskill(skillid),skillid,val))
 		elif num == 0x9cb:	#skill_nodamage
 			skillid	= RFIFOW(buf,2)
 			val		= RFIFOL(buf,4)
 			dst		= RFIFOL(buf,8)
 			aid		= RFIFOL(buf,12)
 			p		= self.mapport.GetValue()
-			if p in mobdata.keys():
+			if self.hiddenbattle.IsChecked() == 1:
+				pass
+			elif p in mobdata.keys():
 				if aid in mobdata[p].keys():
 					if self.scripttimer.IsChecked() == 1:
 						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 					self.text.AppendText("@skillnodamage(src: {}:\"{}\"({}), dst: ({}), skill: \"{}\"({}), val: {})\n".format(mobdata[p][aid][MOB.CLASS],mobdata[p][aid][MOB.NAME], aid, dst, getskill(skillid), skillid, val))
+			elif p in npcdata.keys():
+				if aid in npcdata[p].keys():
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
+					self.text.AppendText("@skillnodamage_effect(src: \"{}\"({}), dst: ({}), skill: \"{}\"({}), val: {})\n".format(npcdata[p][aid][NPC.NAME],aid,dst,getskill(skillid),skillid,val))
 		elif num == 0x117:	#skill_poseffect
 			skillid	= RFIFOW(buf,2)
 			aid		= RFIFOL(buf,4)
@@ -1020,11 +1053,18 @@ class MARiA_Frame(wx.Frame):
 			y		= RFIFOW(buf,12)
 			tick	= RFIFOL(buf,14)
 			p		= self.mapport.GetValue()
-			if p in mobdata.keys():
+			if self.hiddenbattle.IsChecked() == 1:
+				pass
+			elif p in mobdata.keys():
 				if aid in mobdata[p].keys():
 					if self.scripttimer.IsChecked() == 1:
 						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 					self.text.AppendText("@skillposeffect(src: {}:\"{}\"({}), skill: \"{}\"({}), val: {}, pos({}, {}), tick: {})\n".format(mobdata[p][aid][MOB.CLASS],mobdata[p][aid][MOB.NAME], aid, getskill(skillid), skillid, val, x, y, tick))
+			elif p in npcdata.keys():
+				if aid in npcdata[p].keys():
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
+					self.text.AppendText("@skillposeffect_effect(src: \"{}\"({}), skill: \"{}\"({}), val: {}, pos({}, {}), tick: {})\n".format(npcdata[p][aid][NPC.NAME], aid, getskill(skillid), skillid, val, x, y, tick))
 		elif num == 0x9ca:	#skill_unit
 			aid		= RFIFOL(buf,8)
 			x		= RFIFOW(buf,12)
@@ -1032,7 +1072,9 @@ class MARiA_Frame(wx.Frame):
 			unit_id	= RFIFOL(buf,16)
 			skilllv	= RFIFOB(buf,22)
 			p		= self.mapport.GetValue()
-			if p in mobdata.keys():
+			if self.hiddenbattle.IsChecked() == 1:
+				pass
+			elif p in mobdata.keys():
 				if aid in mobdata[p].keys():
 					if self.scripttimer.IsChecked() == 1:
 						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
@@ -1041,7 +1083,9 @@ class MARiA_Frame(wx.Frame):
 			aid		= RFIFOL(buf,2)
 			type	= RFIFOB(buf,6)
 			p		= self.mapport.GetValue()
-			if p in mobdata.keys():
+			if self.hiddenbattle.IsChecked() == 1:
+				pass
+			elif p in mobdata.keys():
 				if aid in mobdata[p].keys():
 					if type == 1:
 						self.text.AppendText("@mob_defeated(\""+mobdata[p][aid][MOB.NAME]+"\"(" +str(aid)+ "))\n")
@@ -1065,7 +1109,14 @@ class MARiA_Frame(wx.Frame):
 			karma	= RFIFOB(buf,14)
 			p		= self.mapport.GetValue()
 			s		= ""
-			if p in npcdata.keys():
+			if chrdata['aid'] == aid:
+				if self.scripttimer.IsChecked() == 1:
+					self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
+				if opt1 > 0 or opt2 > 0:
+					self.text.AppendText("@changeoption opt1: {}, opt2: {}\t// self\n".format(opt1, opt2))
+				else:
+					self.text.AppendText("@changeoptionend opt1: {}, opt2: {}\t// self\n".format(opt1, opt2))
+			elif p in npcdata.keys():
 				if aid in npcdata[p].keys():
 					if npcdata[p][aid][NPC.OPTION] == 2 or option == 2:
 						s += "hideonnpc" if option == 2 else "hideoffnpc"
@@ -1402,7 +1453,7 @@ class MARiA_Frame(wx.Frame):
 			if self.scripttimer.IsChecked() == 1:
 				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			if chrdata['aid'] == aid:
-				self.text.AppendText("showmessage \""+s+",\",\"\";\t// self:hidden\n")
+				self.text.AppendText("showmessage \"{}\",\"\";\t// self:hidden\n".format(s))
 			elif p in npcdata.keys():
 				if aid in npcdata[p].keys():
 					self.text.AppendText("showmessage \""+s+"\",\""+npcdata[p][aid][NPC.NAME]+"\";\t// " +str(aid)+ "\n")
@@ -1414,11 +1465,13 @@ class MARiA_Frame(wx.Frame):
 			idx		= RFIFOW(buf,2)
 			amount	= RFIFOW(buf,4)
 			itemid	= RFIFOL(buf,6)
+			identify = RFIFOB(buf,10)
 			limit	= RFIFOL(buf,35)
 
+			if limit > 0:
+				upgrade = 1
 			equip	= RFIFOL(buf,29)
 			if equip > 0:
-				identify	= RFIFOB(buf,10)
 				refine	= RFIFOB(buf,12)
 				card1	= RFIFOL(buf,13)
 				card2	= RFIFOL(buf,17)
@@ -1505,8 +1558,12 @@ class MARiA_Frame(wx.Frame):
 			val1	= RFIFOL(buf,17)
 			val2	= RFIFOL(buf,21)
 			val3	= RFIFOL(buf,25)
-			if mtick == 9999:
+			if self.hiddenbattle.IsChecked() == 1:
 				pass
+			elif mtick == 9999:
+				if chrdata['aid'] == aid:
+					if type == 665:	#EFST_ACTIVE_MONSTER_TRANSFORM
+						self.text.AppendText("@active_montransform {};\t// self\n".format(val1))
 			else:
 				p	= self.mapport.GetValue()
 				if chrdata['aid'] == aid:
@@ -1522,7 +1579,9 @@ class MARiA_Frame(wx.Frame):
 			val1	= RFIFOL(buf,13)
 			val2	= RFIFOL(buf,17)
 			val3	= RFIFOL(buf,21)
-			if tick == 9999:
+			if self.hiddenbattle.IsChecked() == 1:
+				pass
+			elif tick == 9999:
 				pass
 			else:
 				p	= self.mapport.GetValue()
@@ -1538,7 +1597,9 @@ class MARiA_Frame(wx.Frame):
 			val1	= RFIFOL(buf,12)
 			val2	= RFIFOL(buf,16)
 			val3	= RFIFOL(buf,20)
-			if tick == 9999 or type == 993:
+			if self.hiddenbattle.IsChecked() == 1:
+				pass
+			elif tick == 9999 or type == 993:
 				pass
 			else:
 				p	= self.mapport.GetValue()
@@ -1555,7 +1616,9 @@ class MARiA_Frame(wx.Frame):
 			val1	= RFIFOL(buf,16)
 			val2	= RFIFOL(buf,20)
 			val3	= RFIFOL(buf,24)
-			if mtick == 9999 or type == 993:
+			if self.hiddenbattle.IsChecked() == 1:
+				pass
+			elif mtick == 9999 or type == 993:
 				pass
 			else:
 				p	= self.mapport.GetValue()
@@ -1568,7 +1631,9 @@ class MARiA_Frame(wx.Frame):
 			type	= RFIFOW(buf,2)
 			aid		= RFIFOL(buf,4)
 			flag	= RFIFOB(buf,8)
-			if type == 46 or type == 622 or type == 673 or type == 993:
+			if self.hiddenbattle.IsChecked() == 1:
+				pass
+			elif type == 46 or type == 622 or type == 673 or type == 993:
 				pass
 			else:
 				p	= self.mapport.GetValue()
@@ -1586,16 +1651,25 @@ class MARiA_Frame(wx.Frame):
 		elif num == 0xadf:	#charname_req
 			aid			= RFIFOL(buf,2)
 			group_id	= RFIFOL(buf,6)
+			p	= self.mapport.GetValue()
 			s = buf[10*2:34*2-2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
 			s = s.replace("\0","")
-			if group_id != 0:
-				self.text.AppendText("//setgroupid "+ str(group_id) + ";\t// " +str(aid)+ "\n")
-			t = buf[34*2:58*2-2]
+			t = buf[34*2:]
 			t = binascii.unhexlify(t.encode('utf-8')).decode('cp932','ignore')
-#			t = t.replace("\0","")
-			if t[0] != "\0":
-				self.text.AppendText("//settitle "+ t + ";\n// " +str(aid)+ "\n")
+			t = t.replace("\0","")
+			if p in npcdata.keys():
+				if aid in npcdata[p].keys():
+					if group_id != 0:
+						self.text.AppendText("//setgroupid "+ str(group_id) + ";\t// NPC:" +str(s)+ "(" +str(aid)+ ")\n")
+					if len(t) > 0:
+						self.text.AppendText("//settitle \""+ t + "\";\t// NPC:" +str(s)+ "(" +str(aid)+ ")\n")
+			elif p in mobdata.keys():
+				if aid in mobdata[p].keys():
+					if group_id != 0:
+						self.text.AppendText("//setgroupid "+ str(group_id) + ";\t// MOB:" +str(s)+ "(" +str(aid)+ ")\n")
+					if len(t) > 0:
+						self.text.AppendText("//settitle \""+ t + "\";\t// MOB:" +str(s)+ "(" +str(aid)+ ")\n")
 		elif num == 0xa24:	#acievement update
 			nameid = RFIFOL(buf,16)
 			if self.scripttimer.IsChecked() == 1:
@@ -1661,6 +1735,23 @@ class MARiA_Frame(wx.Frame):
 					self.text.AppendText("@showevent "+str(state)+", "+str(type)+";\t// " +str(aid)+ ": "+str(x)+", "+str(y)+"\n")
 			else:
 				self.text.AppendText("@showevent "+str(state)+", "+str(type)+"\";\t// " +str(aid)+ ": "+str(x)+", "+str(y)+"\n")
+		elif num == 0xa3b:	#hat_effect
+			aid      = RFIFOL(buf,4)
+			enable   = RFIFOB(buf,8)
+			effectId = RFIFOW(buf,9)
+			if chrdata['aid'] == aid:
+				if enable > 0:
+					self.text.AppendText("@hat_effect {}\n".format(effectId))
+				else:
+					self.text.AppendText("@hat_effect_end {}\n".format(effectId))
+		elif num == 0x29b:	#makemerc
+			aid   = RFIFOL(buf,2)
+			limit = RFIFOL(buf,64)
+			i = 22
+			s = buf[i*2:(i+24)*2]
+			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
+			s = s.replace("\0","")
+			self.text.AppendText("@makemerc time: {}\t// {}({})\n".format(limit,s,aid))
 		elif Configuration['Show_OtherPacket'] == 1:
 			self.text.AppendText("@packet "+ n + ".\n")
 

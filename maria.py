@@ -13,7 +13,7 @@ import const
 
 MARiA_MAJOR_VERSION = 0
 MARiA_MINOR_VERSION = 0
-MARiA_MAJOR_REVISION = 31
+MARiA_MAJOR_REVISION = 32
 MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
 
 Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
@@ -378,14 +378,15 @@ class MARiA_Frame(wx.Frame):
 		if event.GetId() == MARiA_Frame.ID_TIMER:
 			if self.timerlock == 0:
 				self.timerlockcnt = 0
-				data = self.th.readdata(self.bufcnt)
-				if len(data) > 1:
-					self.bufcnt += 1
-					self.buf += data
-					self.GetPacket()
-					if self.bufcnt == self.th.readcnt():
-						self.th.setdata()
-						self.bufcnt = 0
+				if self.bufcnt < self.th.readcnt():
+					data = self.th.readdata(self.bufcnt)
+					if len(data) > 1:
+						self.bufcnt += 1
+						self.buf += data
+						self.GetPacket()
+						if self.bufcnt == self.th.readcnt():
+							self.th.setdata()
+							self.bufcnt = 0
 			else:
 				#ロックされてるときはカウンタをあげる
 				self.timerlockcnt += 1

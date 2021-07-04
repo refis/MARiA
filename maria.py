@@ -7,13 +7,14 @@ import time
 import datetime
 import socket
 import traceback
+import pickle
 from scapy.all import *
 
 import const
 
 MARiA_MAJOR_VERSION = 0
 MARiA_MINOR_VERSION = 0
-MARiA_MAJOR_REVISION = 32
+MARiA_MAJOR_REVISION = 33
 MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
 
 Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
@@ -246,6 +247,11 @@ class MARiA_Frame(wx.Frame):
 		copybinary = file.Append(-1, "バイナリ窓コピー")
 		copyscript = file.Append(-1, "スクリプト窓コピー")
 		file.AppendSeparator()
+		savefile = file.Append(-1, "データをファイルに保存")
+		self.Bind(wx.EVT_MENU, self.OnSaveFile, savefile)
+		loadfile = file.Append(-1, "ファイルからデータ読込")
+		self.Bind(wx.EVT_MENU, self.OnLoadFile, loadfile)
+		file.AppendSeparator()
 		item_1 = wx.MenuItem(file, -1, 'Auriga', kind=wx.ITEM_RADIO)
 		item_2 = wx.MenuItem(file, -1, 'rAthena:ToDo', kind=wx.ITEM_RADIO)
 		item_3 = wx.MenuItem(file, -1, 'Hercules:ToDo', kind=wx.ITEM_RADIO)
@@ -477,6 +483,34 @@ class MARiA_Frame(wx.Frame):
 			for class_ in mapmobs[map].keys():
 				if class_ != '0':
 					self.text.AppendText("{},0,0,0,0\tmonster\t{}\t{},{},0,0,0\n".format(map,mapmobs[map][class_][0],class_,mapmobs[map][class_][1]))
+
+	def OnSaveFile(self, event):
+		try:
+			with open('npc.md', 'wb') as f:
+				pickle.dump(npcdata, f)
+		except IOError:
+			print('cannot open file npc.md')
+		try:
+			with open('mob.md', 'wb') as f:
+				pickle.dump(mobdata, f)
+		except IOError:
+			print('cannot open file mob.md')
+		try:
+			with open('warp.md', 'wb') as f:
+				pickle.dump(warpnpc, f)
+		except IOError:
+			print('cannot open file warp.md')
+
+	def OnLoadFile(self, event):
+		global npcdata
+		global mobdata
+		global warpnpc
+		with open('npc.md', 'rb') as f:
+			npcdata = pickle.load(f)
+		with open('mob.md', 'rb') as f:
+			mobdata = pickle.load(f)
+		with open('warp.md', 'rb') as f:
+			warpnpc = pickle.load(f)
 
 	def CheckNearNPC(self, m, x, y):
 		p = self.mapport.GetValue()

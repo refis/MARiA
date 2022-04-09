@@ -14,7 +14,7 @@ import const
 
 MARiA_MAJOR_VERSION = 0
 MARiA_MINOR_VERSION = 0
-MARiA_MAJOR_REVISION = 34
+MARiA_MAJOR_REVISION = 37
 MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
 
 Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
@@ -175,6 +175,7 @@ class MARiA_Catch(threading.Thread):
 		self.mapport = num2
 
 	def run(self):
+		conf.layers.filter ([IP, TCP])
 		sniff (filter = "ip host "+TargetIP, prn=self.OnCatch, count=0)
 
 	def c_pause(self,flag):
@@ -198,6 +199,7 @@ class MARiA_Catch(threading.Thread):
 	def OnCatch(self, packet):
 		if self.pause_flag == False:
 			if self.is_this_target_packet(packet) == True:
+				#print(packet.show())
 				if Raw in packet:
 					raw = packet.lastlayer()
 					self.data.append(self.OnHexEx(raw))
@@ -461,28 +463,29 @@ class MARiA_Frame(wx.Frame):
 	def OnMonsterList(self, event):
 		mapmobs = {}
 		mapmobs.setdefault('unknown.gat',{})
-		mapmobs['unknown.gat'].setdefault('0',{})
-		mapmobs['unknown.gat']['0'] = ["unknown name", 0]
+		mapmobs['unknown.gat'].setdefault(0,{})
+		mapmobs['unknown.gat'][0] = ["unknown name", 0, 0, 0, 0]
 		for p in mobdata.keys():
-			for aid in mobdata[p].keys():
+			tmp_mobdata = sorted(mobdata[p])
+			for aid in tmp_mobdata:
 				if aid > 0:
-					#if mapmobs[mobdata[p][aid][MOB.MAP]][mobdata[p][aid][MOB.CLASS]][1]:
-						#mapmobs[map][class_][2] += 1
-					#else:
-					#mapmobs[mobdata[p][aid][MOB.MAP]][mobdata[p][aid][MOB.CLASS]] = [mobdata[p][aid][MOB.NAME], 1]
-					if mobdata[p][aid][MOB.MAP] in mapmobs:
-						if mobdata[p][aid][MOB.CLASS] in mapmobs[mobdata[p][aid][MOB.MAP]]:
-							mapmobs[mobdata[p][aid][MOB.MAP]][mobdata[p][aid][MOB.CLASS]][1] += 1
+					if mobdata[p][aid][MOB.MAP] in mapmobs.keys():
+						if mobdata[p][aid][MOB.CLASS] == mapmobs[mobdata[p][aid][MOB.MAP]][len(mapmobs[mobdata[p][aid][MOB.MAP]])-1][1]:
+							mapmobs[mobdata[p][aid][MOB.MAP]][len(mapmobs[mobdata[p][aid][MOB.MAP]])-1][2] += 1
+							mapmobs[mobdata[p][aid][MOB.MAP]][len(mapmobs[mobdata[p][aid][MOB.MAP]])-1][4] = aid
 						else:
-							mapmobs[mobdata[p][aid][MOB.MAP]][mobdata[p][aid][MOB.CLASS]] = [ mobdata[p][aid][MOB.NAME],1 ]
+							mapmobs[mobdata[p][aid][MOB.MAP]][len(mapmobs[mobdata[p][aid][MOB.MAP]])] = [ mobdata[p][aid][MOB.NAME],mobdata[p][aid][MOB.CLASS],1,aid,0 ]
 					else:
-						mapmobs[mobdata[p][aid][MOB.MAP]] = { mobdata[p][aid][MOB.CLASS]: [ mobdata[p][aid][MOB.NAME],1 ] }
+						mapmobs[mobdata[p][aid][MOB.MAP]] = { 0: [ mobdata[p][aid][MOB.NAME],mobdata[p][aid][MOB.CLASS],1,aid,0 ] }
 		for map in mapmobs.keys():
 			self.text.AppendText("//------------------------------------------------------------\n")
 			self.text.AppendText("// {}\n".format(map))
-			for class_ in mapmobs[map].keys():
-				if class_ != '0':
-					self.text.AppendText("{},0,0,0,0\tmonster\t{}\t{},{},0,0,0\n".format(map,mapmobs[map][class_][0],class_,mapmobs[map][class_][1]))
+			for i in mapmobs[map]:
+				if mapmobs[map][i][1] != 0:
+					if mapmobs[map][i][4] != 0:
+						self.text.AppendText("{},0,0,0,0\tmonster\t{}\t{},{},0,0,0\t// aid: {}-{}\n".format(map,mapmobs[map][i][0],mapmobs[map][i][1],mapmobs[map][i][2],mapmobs[map][i][3],mapmobs[map][i][4]))
+					else:
+						self.text.AppendText("{},0,0,0,0\tmonster\t{}\t{},{},0,0,0\t// aid: {}\n".format(map,mapmobs[map][i][0],mapmobs[map][i][1],mapmobs[map][i][2],mapmobs[map][i][3]))
 
 	def OnSaveFile(self, event):
 		try:
@@ -570,6 +573,11 @@ class MARiA_Frame(wx.Frame):
 				packet_len = RFIFOW(buf,2)
 				if packet_len <= 0:
 					print("[Error] unknown packet len = 0: ",format(num, '#06x'),", prev:",format(self.prev_num, '#06x'),", clear buf: ",buf,"\n")
+					self.btext.AppendText("\n"+format(num, '#06x')+" len=0: Please check PacketLength.txt. (prev:" + format(self.prev_num, '#06x')+")\n")
+					self.buf = buf = ''
+					break
+				elif packet_len >= 32000:
+					print("[Error] big packet len: ",format(num, '#06x'),", prev:",format(self.prev_num, '#06x'),", clear buf: ",buf,"\n")
 					self.btext.AppendText("\n"+format(num, '#06x')+" len=0: Please check PacketLength.txt. (prev:" + format(self.prev_num, '#06x')+")\n")
 					self.buf = buf = ''
 					break
@@ -695,7 +703,7 @@ class MARiA_Frame(wx.Frame):
 				elif type==9:
 					self.text.AppendText("@spawn(type: BL_MERC, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+")\n")
 		elif num == 0x9ff:	#idle
-			if p_len > 84:
+			if p_len >= 84:
 				type	= RFIFOB(fd,4)
 				aid		= RFIFOL(fd,5)
 				speed	= RFIFOW(fd,13)
@@ -705,18 +713,21 @@ class MARiA_Frame(wx.Frame):
 				y		= RFIFOPOSY(fd,63)
 				dir		= RFIFOPOSD(fd,63)
 				if type==5 or type==6 or type==12:
-					i = 84
-					s = fd[i*2:p_len*2]
 					opt = ""
 					if option == 2:
 						opt = "(hide)"
 					elif option == 4:
 						opt = "(cloaking)"
-					s_len = len(s)
-					if s_len > 46 and ((s[-2:] >= '80' and s[-2:] <= '9f') or (s[-2:] >= 'e0' and s[-2:] <= '9e')):
-						s = s[:-2]
-					s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
-					s = "" if s[0] == '\0' else s
+					if p_len == 84:
+						s = " "
+					else:
+						i = 84
+						s = fd[i*2:p_len*2]
+						s_len = len(s)
+						if s_len > 46 and ((s[-2:] >= '80' and s[-2:] <= '9f') or (s[-2:] >= 'e0' and s[-2:] <= '9e')):
+							s = s[:-2]
+						s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
+						s = "" if s[0] == '\0' else s
 					p = self.mapport.GetValue()
 					m = chrdata['mapname']
 					if type == 5:
@@ -753,6 +764,18 @@ class MARiA_Frame(wx.Frame):
 							else:
 								self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\tscript\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
 								npcdata[p][aid] = [m,x,y,dir,s,view,option]
+								if view < 45 or (view >= 4000 and view <= 4300):
+									hair	= RFIFOW(fd,25)
+									bottom	= RFIFOW(fd,35)
+									top	= RFIFOW(fd,37)
+									mid	= RFIFOW(fd,39)
+									h_color	= RFIFOW(fd,41)
+									c_color	= RFIFOW(fd,43)
+									robe	= RFIFOW(fd,47)
+									sex	= RFIFOB(fd,62)
+									style	= RFIFOW(fd,82)
+									self.text.AppendText("// Name Class Sex ClothColor HairStyle HairColor Helm1 Helm2 Helm3 robe style.\n")
+									self.text.AppendText("OnInit:\n\tsetnpcdisplay \"{}\",{},{},{},{},{},{},{},{},{},{};\t// {}\n".format(npcdata[p][aid][NPC.NAME], view, sex, c_color, hair, h_color, top, mid, bottom, robe, style, aid))
 						else:
 							self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\tscript\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
 							npcdata[p] = { aid: [m,x,y,dir,s,view,option] }
@@ -839,10 +862,12 @@ class MARiA_Frame(wx.Frame):
 			s = fd[8*2:p_len*2-4]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
 			l = s.split(':')
+			if chrdata['name'] != 'unknown name':
+				s = s.replace(chrdata['name'],"\"+strcharinfo(0)+\"")
 			if self.scripttimer.IsChecked() == 1:
 				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			if len(l) == 1:
-				self.text.AppendText("menu \""+s+"\",-;\n")
+				self.text.AppendText("menu \"{}\",-;\n",s)
 			elif len(l) == 2:
 				self.text.AppendText("if(select(\""+s.replace(':','\",\"')+"\") == 2) {\n")
 			else:
@@ -1233,7 +1258,7 @@ class MARiA_Frame(wx.Frame):
 			color	= color&0x00FFFFFF
 			if self.scripttimer.IsChecked() == 1:
 				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
-			self.text.AppendText("viewpoint "+str(type)+", "+str(x)+", "+str(y)+", "+str(id)+", 0x"+format(color, '06X')+";\t// "+str(n)+"\n")
+			self.text.AppendText("viewpoint "+str(type)+", "+str(x)+", "+str(y)+", "+str(id)+", 0x"+format(color, '06X')+";\t// "+str(aid)+"\n")
 		elif num == 0x0d7:	#chatwnd
 			p = self.mapport.GetValue()
 			if p in npcdata.keys():
@@ -1388,12 +1413,12 @@ class MARiA_Frame(wx.Frame):
 						if aid in warpnpc[p].keys():
 							self.text.AppendText("@changemap \"{}\", x : {}, y : {};\t// from: {}({}, {})\n".format(s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
 						else:
-							self.text.AppendText("{},{},{},0\twarp\t{}\t2,2,{},{},{} //{} from_pos=({}, {})\n".format(
-								npcdata[p][aid][NPC.MAP],npcdata[p][aid][NPC.POSX],npcdata[p][aid][NPC.POSY],npcdata[p][aid][NPC.NAME], s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
+							self.text.AppendText("{},{},{},0\twarp\t{}\t2,2,{},{},{} // {} from: {}({}, {})\n".format(
+								npcdata[p][aid][NPC.MAP],npcdata[p][aid][NPC.POSX],npcdata[p][aid][NPC.POSY],npcdata[p][aid][NPC.NAME], s, x, y, aid, chrdata['mapname'], chrdata['x'], chrdata['y']))
 							warpnpc[p][aid] = npcdata[p][aid][NPC.NAME]
 					else:
-						self.text.AppendText("{},{},{},0\twarp\t{}\t2,2,{},{},{} //{} from_pos=({}, {})\n".format(
-							npcdata[p][aid][NPC.MAP],npcdata[p][aid][NPC.POSX],npcdata[p][aid][NPC.POSY],npcdata[p][aid][NPC.NAME], s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
+						self.text.AppendText("{},{},{},0\twarp\t{}\t2,2,{},{},{} // {} from: {}({}, {})\n".format(
+							npcdata[p][aid][NPC.MAP],npcdata[p][aid][NPC.POSX],npcdata[p][aid][NPC.POSY],npcdata[p][aid][NPC.NAME], s, x, y, aid, chrdata['mapname'], chrdata['x'], chrdata['y']))
 						warpnpc[p] = { aid: npcdata[p][aid][NPC.NAME] }
 				else:
 					self.text.AppendText("warp \"{}\", {}, {};\t// from: {}({}, {})\n".format(s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
@@ -1421,12 +1446,12 @@ class MARiA_Frame(wx.Frame):
 						if aid in warpnpc[p].keys():
 							self.text.AppendText("@changemapserver \"{}\", x : {}, y : {}, port : {};\t// from: {}({}, {})\n".format(s, x, y, port, chrdata['mapname'], chrdata['x'], chrdata['y']))
 						else:
-							self.text.AppendText("{},{},{},0\twarp\t{}\t2,2,{},{},{} //{} from_pos=({}, {})\n".format(
-								npcdata[p][aid][NPC.MAP],npcdata[p][aid][NPC.POSX],npcdata[p][aid][NPC.POSY],npcdata[p][aid][NPC.NAME], s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
+							self.text.AppendText("{},{},{},0\twarp\t{}\t2,2,{},{},{} //{} from: {}({}, {})\n".format(
+								npcdata[p][aid][NPC.MAP],npcdata[p][aid][NPC.POSX],npcdata[p][aid][NPC.POSY],npcdata[p][aid][NPC.NAME], s, x, y, aid, chrdata['mapname'], chrdata['x'], chrdata['y']))
 							warpnpc[p][aid] = [npcdata[p][aid][NPC.NAME]]
 					else:
-						self.text.AppendText("{},{},{},0\twarp\t{}\t2,2,{},{},{} //{} from_pos=({}, {})\n".format(
-							npcdata[p][aid][NPC.MAP],npcdata[p][aid][NPC.POSX],npcdata[p][aid][NPC.POSY],npcdata[p][aid][NPC.NAME], s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
+						self.text.AppendText("{},{},{},0\twarp\t{}\t2,2,{},{},{} //{} from: {}({}, {})\n".format(
+							npcdata[p][aid][NPC.MAP],npcdata[p][aid][NPC.POSX],npcdata[p][aid][NPC.POSY],npcdata[p][aid][NPC.NAME], s, x, y, aid, chrdata['mapname'], chrdata['x'], chrdata['y']))
 						warpnpc[p] = { aid: [npcdata[p][aid][NPC.NAME]] }
 				else:
 					self.text.AppendText("warp \"{}\", {}, {};\t// from: {}({}, {}) port : {}\n".format(s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y'], port))

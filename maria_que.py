@@ -9,6 +9,7 @@ import socket
 import traceback
 import pickle
 from scapy.all import *
+import queue
 
 import const
 
@@ -59,6 +60,8 @@ EFST = const.EFST
 NPC = const.NPC
 MOB = const.MOB
 RANDOPT = const.RANDOPT
+
+recv_q = queue.Queue()
 
 RFIFOS = lambda p, pos1, pos2: p[pos1*2:pos2*2]
 RFIFOB = lambda p, pos: int(p[pos*2:pos*2+2],16)
@@ -203,11 +206,10 @@ class MARiA_Catch(threading.Thread):
 	def OnCatch(self, packet):
 		if self.pause_flag == False:
 			if self.is_this_target_packet(packet) == True:
-				#print(packet.show())
 				if Raw in packet:
 					raw = packet.lastlayer()
-					self.data.append(self.OnHexEx(raw))
-					self.datacnt += 1
+					if not recv_q.full():
+						recv_q.put(self.OnHexEx(raw), block=False)
 		else:
 			pass
 
@@ -392,22 +394,15 @@ class MARiA_Frame(wx.Frame):
 		if event.GetId() == MARiA_Frame.ID_TIMER:
 			if self.timerlock == 0:
 				self.timerlockcnt = 0
-				if self.bufcnt < self.th.readcnt():
-					data = self.th.readdata(self.bufcnt)
-					if len(data) > 1:
-						self.bufcnt += 1
-						self.buf += data
-						self.GetPacket()
-						if self.bufcnt == self.th.readcnt():
-							self.th.setdata()
-							self.bufcnt = 0
+				if not recv_q.empty():
+					self.buf += recv_q.get()
+					self.GetPacket()
 			else:
 				#ロックされてるときはカウンタをあげる
 				self.timerlockcnt += 1
 				if self.timerlockcnt >= 20:	#デッドロックの予感
 					self.timerlock		= 0
 					self.timerlockcnt	= 0
-					self.buf = ""
 					print("DeadLock buf Clear\n")
 		else:
 			event.Skip()
@@ -627,7 +622,7 @@ class MARiA_Frame(wx.Frame):
 					if total_len >= 10:
 						if buf[:10] == "0000000000":
 							if packet_len*2+10 < total_len:
-								self.buf = buf = buf[10:]
+								self.buf = buf = self.buf[10:]
 							else:
 								self.buf = buf = ''
 						else:
@@ -662,9 +657,17 @@ class MARiA_Frame(wx.Frame):
 					break
 			self.prev_num = num
 			if packet_len*2 < total_len:
-				self.buf = buf = buf[packet_len*2:]
+				#print("packet_len:" +str(packet_len*2)+", total_len:"+str(total_len)+", buf:"+buf)
+				if len(self.buf) == len(buf):
+					self.buf = buf = buf[packet_len*2:]
+				else:
+					self.buf = buf = self.buf[packet_len*2:]
 			else:
-				self.buf = buf = ''
+				#print("one packet, packet_len:" +str(packet_len*2)+", buf:"+buf)
+				if len(self.buf) == len(buf):
+					self.buf = buf = ""
+				else:
+					self.buf = buf = self.buf[packet_len*2:]
 		self.timerlock = 0
 
 	def ReadPacket(self, num, p_len):

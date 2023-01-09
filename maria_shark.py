@@ -9,6 +9,8 @@ import socket
 import traceback
 import pickle
 from scapy.all import *
+import queue
+import pyshark
 
 import const
 
@@ -59,6 +61,8 @@ EFST = const.EFST
 NPC = const.NPC
 MOB = const.MOB
 RANDOPT = const.RANDOPT
+
+recv_q = queue.Queue()
 
 RFIFOS = lambda p, pos1, pos2: p[pos1*2:pos2*2]
 RFIFOB = lambda p, pos: int(p[pos*2:pos*2+2],16)
@@ -179,14 +183,24 @@ class MARiA_Catch(threading.Thread):
 		self.mapport = num2
 
 	def run(self):
-		conf.layers.filter ([IP, TCP])
-		sniff (filter = "ip host "+TargetIP, prn=self.OnCatch, count=0)
+		capture = pyshark.LiveCapture(bpf_filter='ip host '+TargetIP)
+		capture.apply_on_packets(self.OnCatch)
+		capture.sniff()
 
 	def c_pause(self,flag):
 		self.pause_flag = flag
 
 	def is_this_target_packet(self, packet):
-		return TCP in packet and (packet[TCP].sport == self.charport or packet[TCP].sport == self.mapport)
+		if not 'TCP' in packet:
+			return 0
+		if not 'payload' in packet.tcp.field_names:
+			return 0
+		#if packet.ip.flags != 0x40:
+		#	print(packet.ip.flags)
+		#print("---------------------\n")
+		#print(packet.tcp.field_names)
+		#print("port:"+packet.tcp.srcport)
+		return (int(packet.tcp.srcport) == self.charport or int(packet.tcp.srcport) == self.mapport)
 
 	def OnHexEx(self,x):
 		s = ""
@@ -200,14 +214,21 @@ class MARiA_Catch(threading.Thread):
 			i += 16
 		return s
 
+	def OnHexEx2(self, x):
+		s = ""
+		for str in x.split(":"):
+			s += str
+		return s
+
 	def OnCatch(self, packet):
+		#print(packet)
 		if self.pause_flag == False:
 			if self.is_this_target_packet(packet) == True:
-				#print(packet.show())
-				if Raw in packet:
-					raw = packet.lastlayer()
-					self.data.append(self.OnHexEx(raw))
-					self.datacnt += 1
+				raw = packet.tcp.payload
+				if not recv_q.full():
+					recv_q.put(self.OnHexEx2(raw), block=False)
+				#self.data.append(self.OnHexEx2(raw))
+				#self.datacnt += 1
 		else:
 			pass
 
@@ -222,6 +243,8 @@ class MARiA_Frame(wx.Frame):
 	tmp_id		= 0
 	timerlock	= 0
 	timerlockcnt= 0
+	lastbuff = ""
+	lastlen = 0
 	packet_lasttick = 0
 	th = MARiA_Catch()
 	th.setDaemon(True)
@@ -392,22 +415,14 @@ class MARiA_Frame(wx.Frame):
 		if event.GetId() == MARiA_Frame.ID_TIMER:
 			if self.timerlock == 0:
 				self.timerlockcnt = 0
-				if self.bufcnt < self.th.readcnt():
-					data = self.th.readdata(self.bufcnt)
-					if len(data) > 1:
-						self.bufcnt += 1
-						self.buf += data
-						self.GetPacket()
-						if self.bufcnt == self.th.readcnt():
-							self.th.setdata()
-							self.bufcnt = 0
+				if not recv_q.empty():
+					self.GetPacket(recv_q.get())
 			else:
 				#ロックされてるときはカウンタをあげる
 				self.timerlockcnt += 1
 				if self.timerlockcnt >= 20:	#デッドロックの予感
 					self.timerlock		= 0
 					self.timerlockcnt	= 0
-					self.buf = ""
 					print("DeadLock buf Clear\n")
 		else:
 			event.Skip()
@@ -557,82 +572,62 @@ class MARiA_Frame(wx.Frame):
 						return aid
 		return -1
 
-	def GetPacket(self):
-		buf = self.buf
+	def GetPacket(self, buffer):
+		buf_len = len(buffer)
+		bufoff = 0
+		packet_len = 0
 		tick = gettick()
 		self.timerlock = 1
-		while not buf == "":
-			lasttick = gettick()
-			if lasttick - tick > 2500:	#2500msを超えたら再帰
-				print("GetPacket timeout\n")
-				break
-			total_len = len(buf)
-			if total_len < 4:	#4文字以下なら
+		while bufoff < buf_len:
+			if self.lastlen > 0:
+				buf = self.lastbuff + buffer[bufoff:]
+				total_len = self.lastlen + len(buf)
+				self.lastbuff = ""
+				self.lastlen = 0
+			else:
+				buf = buffer[bufoff:]
+				total_len = len(buf)
+			if total_len < 2:	#2文字以下なら
 				print("GetPacket min bufber size\n")
 				break
+			j = 0
+#			while j < buf_len and j < total_len:
 			num = RFIFOW(buf,0)
 			if num in Packetlen.keys():
 				packet_len = Packetlen[num]
 			else:
-				if num > MAX_PACKET_DB:
-					snum = RFIFOW(buf,1)
-					if snum in Packetlen.keys():
-						print("[Info] unknown 1 byte skiped, result:",format(snum, '#06x'),", prev:",format(self.prev_num, '#06x'),", skiped byte: 0x",buf[:2],"\n")
-						num = snum
-						packet_len = Packetlen[num]
-						buf = buf[2:]	#1byte skip
-					else:
-						print("[Error] unknown ultra high packet, id: ",format(num, '#06x'),", prev:",format(self.prev_num, '#06x'),", clear buf: ",buf,"\n")
-						self.btext.AppendText("\nultrahigh_packetid_" + format(num, '#06x')+", prev:"+format(self.prev_num, '#06x'))
-#						self.text.AppendText("//------------------------------------------------------------\n")
-#						self.text.AppendText(buf + "\n")
-#						self.text.AppendText("//------------------------------------------------------------\n")
-						self.buf = buf = ''
-						break
-				else:
-					snum = RFIFOW(buf,1)
-					if snum in Packetlen.keys():
-						print("[Info] unknown 1 byte skiped, result:",format(snum, '#06x'),", prev:",format(self.prev_num, '#06x'),", skiped byte: 0x",buf[:2],"\n")
-						num = snum
-						packet_len = Packetlen[num]
-						buf = buf[2:]	#1byte skip
-					else:
-						print("[Error] unknown packet len: ",format(num, '#06x'),", prev:",format(self.prev_num, '#06x'),", set packet_len: 2\n")
-						self.btext.AppendText("\nunknown_packetlength" + format(num, '#06x')+", prev:"+format(self.prev_num, '#06x'))
-						packet_len = 2
+				print("[Error] unknown packet len: ",format(num, '#06x'),", prev:",format(self.prev_num, '#06x'),"\n")
+				self.btext.AppendText("\nunknown_packetlength" + format(num, '#06x')+", prev:"+format(self.prev_num, '#06x'))
+				break
 			if packet_len == -1:
 				packet_len = RFIFOW(buf,2)
 				if packet_len <= 0:
 					print("[Error] unknown packet len = 0: ",format(num, '#06x'),", prev:",format(self.prev_num, '#06x'),", clear buf: ",buf,"\n")
 					self.btext.AppendText("\n"+format(num, '#06x')+" len=0: Please check PacketLength.txt. (prev:" + format(self.prev_num, '#06x')+")\n")
-					self.buf = buf = ''
-					break
-				elif packet_len >= 32000:
-					print("[Error] big packet len: ",format(num, '#06x'),", prev:",format(self.prev_num, '#06x'),", clear buf: ",buf,"\n")
-					self.btext.AppendText("\n"+format(num, '#06x')+" len=0: Please check PacketLength.txt. (prev:" + format(self.prev_num, '#06x')+")\n")
-					self.buf = buf = ''
 					break
 			if packet_len*2 > total_len:	#パケット足りてない
-				if self.packet_lasttick > 0 and lasttick - self.packet_lasttick > 10000:	#10000ms待機しても続きが来ない
+				if self.packet_lasttick > 0 and gettick() - self.packet_lasttick > 1000:	#1000ms待機しても続きが来ない
 					print("[Error] packet time out, target:",format(num, '#06x'),", len: ",str(packet_len),", prev:",format(self.prev_num, '#06x'),", clear buf: ",buf,"\n")
 					self.btext.AppendText("\n" + format(num, '#06x')+"(len = "+str(packet_len)+") Time out. Please check PacketLength.txt. (prev:" +format(self.prev_num, '#06x')+ ")")
-					self.buf = buf = ''
+					self.lastbuff = ""
+					self.lastlen = 0
 					self.packet_lasttick = 0
+					break
 				elif self.packet_lasttick == 0:
-					self.packet_lasttick = tick
+					self.packet_lasttick = gettick()
 				print("[Waiting] packet waiting...",format(num, '#06x'),", len:",str(total_len),"/",str(packet_len*2),"\n")
+				self.lastbuff = buf
+				self.lastlen = total_len
 				break
 			if self.logout_mode >= 1:
 				if buf[:4] == "0000":
 					if total_len >= 10:
 						if buf[:10] == "0000000000":
 							if packet_len*2+10 < total_len:
-								self.buf = buf = buf[10:]
-							else:
-								self.buf = buf = ''
+								packet_len = 5
 						else:
 							self.logout_mode = 0
-					break
+#					break
 				else:
 					self.logout_mode = 0
 			if num == 0x229:
@@ -655,22 +650,16 @@ class MARiA_Frame(wx.Frame):
 			if (ignore_type&2 == 0 and IgnorePacketAll&2 == 0) or ignore_type&8:
 				try:
 					if packet_len >= 2:
-						self.ReadPacket(num, packet_len)
+						self.ReadPacket(num, buf, packet_len)
 				except Exception as e:
 					print(traceback.format_exc())
-					self.buf = buf = ''
 					break
 			self.prev_num = num
-			if packet_len*2 < total_len:
-				self.buf = buf = buf[packet_len*2:]
-			else:
-				self.buf = buf = ''
+			bufoff += packet_len*2
 		self.timerlock = 0
 
-	def ReadPacket(self, num, p_len):
-		global mobskill
+	def ReadPacket(self, num, fd, p_len):
 		n = hex(num)
-		fd = self.buf[0:p_len*2]
 		if num == 0x9fe:	#spawn
 			if p_len > 83:
 				type	= RFIFOB(fd,4)

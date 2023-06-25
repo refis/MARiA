@@ -9,12 +9,13 @@ import socket
 import traceback
 import pickle
 from scapy.all import *
+import queue
 
 import const
 
 MARiA_MAJOR_VERSION = 0
-MARiA_MINOR_VERSION = 0
-MARiA_MAJOR_REVISION = 39
+MARiA_MINOR_VERSION = 1
+MARiA_MAJOR_REVISION = 0
 MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
 
 Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
@@ -52,13 +53,15 @@ mobskill['0']['0'] = [0,0,0,0,0,0,0,0,"",""]
 TargetIP = 0
 IgnorePacketAll = 0
 
-MAX_PACKET_DB = 0x0b90
+MAX_PACKET_DB = 0x0C10
 
 SkillName = const.SKILLNAME
 EFST = const.EFST
 NPC = const.NPC
 MOB = const.MOB
 RANDOPT = const.RANDOPT
+
+recv_q = queue.Queue()
 
 RFIFOS = lambda p, pos1, pos2: p[pos1*2:pos2*2]
 RFIFOB = lambda p, pos: int(p[pos*2:pos*2+2],16)
@@ -150,29 +153,9 @@ def save_configuration():
 class MARiA_Catch(threading.Thread):
 	def __init__(self):
 		threading.Thread.__init__(self)
-		self.data = []
-		self.data.append("")
-		self.datacnt = 0
 		self.charport = 6121
 		self.mapport = 5121
 		self.pause_flag = True
-
-	def readpause(self):
-		return self.pause_flag
-
-	def readdata(self,dpos):
-		if len(self.data) > 1:
-			return self.data[dpos+1]
-		else:
-			return ""
-
-	def setdata(self):
-		self.data = []
-		self.data.append("")
-		self.datacnt = 0
-
-	def readcnt(self):
-		return self.datacnt
 
 	def setport(self, num1, num2):
 		self.charport = num1
@@ -181,6 +164,9 @@ class MARiA_Catch(threading.Thread):
 	def run(self):
 		conf.layers.filter ([IP, TCP])
 		sniff (filter = "ip host "+TargetIP, prn=self.OnCatch, count=0)
+
+	def readpause(self):
+		return self.pause_flag
 
 	def c_pause(self,flag):
 		self.pause_flag = flag
@@ -203,11 +189,10 @@ class MARiA_Catch(threading.Thread):
 	def OnCatch(self, packet):
 		if self.pause_flag == False:
 			if self.is_this_target_packet(packet) == True:
-				#print(packet.show())
 				if Raw in packet:
 					raw = packet.lastlayer()
-					self.data.append(self.OnHexEx(raw))
-					self.datacnt += 1
+					if not recv_q.full():
+						recv_q.put(self.OnHexEx(raw), block=False)
 		else:
 			pass
 
@@ -392,15 +377,9 @@ class MARiA_Frame(wx.Frame):
 		if event.GetId() == MARiA_Frame.ID_TIMER:
 			if self.timerlock == 0:
 				self.timerlockcnt = 0
-				if self.bufcnt < self.th.readcnt():
-					data = self.th.readdata(self.bufcnt)
-					if len(data) > 1:
-						self.bufcnt += 1
-						self.buf += data
-						self.GetPacket()
-						if self.bufcnt == self.th.readcnt():
-							self.th.setdata()
-							self.bufcnt = 0
+				if not recv_q.empty():
+					self.buf += recv_q.get()
+					self.GetPacket()
 			else:
 				#ロックされてるときはカウンタをあげる
 				self.timerlockcnt += 1
@@ -411,6 +390,7 @@ class MARiA_Frame(wx.Frame):
 					print("DeadLock buf Clear\n")
 		else:
 			event.Skip()
+
 	def OnClose(self, event):
 		pos = self.GetScreenPosition()
 		size = self.GetSize()
@@ -584,9 +564,6 @@ class MARiA_Frame(wx.Frame):
 					else:
 						print("[Error] unknown ultra high packet, id: ",format(num, '#06x'),", prev:",format(self.prev_num, '#06x'),", clear buf: ",buf,"\n")
 						self.btext.AppendText("\nultrahigh_packetid_" + format(num, '#06x')+", prev:"+format(self.prev_num, '#06x'))
-#						self.text.AppendText("//------------------------------------------------------------\n")
-#						self.text.AppendText(buf + "\n")
-#						self.text.AppendText("//------------------------------------------------------------\n")
 						self.buf = buf = ''
 						break
 				else:
@@ -613,21 +590,21 @@ class MARiA_Frame(wx.Frame):
 					self.buf = buf = ''
 					break
 			if packet_len*2 > total_len:	#パケット足りてない
-				if self.packet_lasttick > 0 and lasttick - self.packet_lasttick > 10000:	#10000ms待機しても続きが来ない
-					print("[Error] packet time out, target:",format(num, '#06x'),", len: ",str(packet_len),", prev:",format(self.prev_num, '#06x'),", clear buf: ",buf,"\n")
-					self.btext.AppendText("\n" + format(num, '#06x')+"(len = "+str(packet_len)+") Time out. Please check PacketLength.txt. (prev:" +format(self.prev_num, '#06x')+ ")")
-					self.buf = buf = ''
-					self.packet_lasttick = 0
-				elif self.packet_lasttick == 0:
-					self.packet_lasttick = tick
-				print("[Waiting] packet waiting...",format(num, '#06x'),", len:",str(total_len),"/",str(packet_len*2),"\n")
+				#if self.packet_lasttick > 0 and lasttick - self.packet_lasttick > 10000:	#10000ms待機しても続きが来ない
+				#	print("[Error] packet time out, target:",format(num, '#06x'),", len: ",str(packet_len),", prev:",format(self.prev_num, '#06x'),", clear buf: ",buf,"\n")
+				#	self.btext.AppendText("\n" + format(num, '#06x')+"(len = "+str(packet_len)+") Time out. Please check PacketLength.txt. (prev:" +format(self.prev_num, '#06x')+ ")")
+				#	self.buf = buf = ''
+				#	self.packet_lasttick = 0
+				#elif self.packet_lasttick == 0:
+				#	self.packet_lasttick = tick
+				#print("[Waiting] packet waiting...",format(num, '#06x'),", len:",str(total_len),"/",str(packet_len*2),"\n")
 				break
 			if self.logout_mode >= 1:
 				if buf[:4] == "0000":
 					if total_len >= 10:
 						if buf[:10] == "0000000000":
 							if packet_len*2+10 < total_len:
-								self.buf = buf = buf[10:]
+								self.buf = buf = self.buf[10:]
 							else:
 								self.buf = buf = ''
 						else:
@@ -664,7 +641,7 @@ class MARiA_Frame(wx.Frame):
 			if packet_len*2 < total_len:
 				self.buf = buf = buf[packet_len*2:]
 			else:
-				self.buf = buf = ''
+				self.buf = buf = ""
 		self.timerlock = 0
 
 	def ReadPacket(self, num, p_len):

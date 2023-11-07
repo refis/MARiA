@@ -10,16 +10,17 @@ import traceback
 import pickle
 from scapy.all import *
 import queue
+import gc
 
 import const
 
 MARiA_MAJOR_VERSION = 0
 MARiA_MINOR_VERSION = 1
-MARiA_MAJOR_REVISION = 0
+MARiA_MAJOR_REVISION = 3
 MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
 
 Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
-dummy_mob = ["unknown.gat",0,0,"No Mob Name",0,0,0,0,0]
+dummy_mob = ["unknown.gat",0,0,0,0,"No Mob Name",0,0,0,0,0]
 dummy_npc = ["unknown.gat",0,0,0,"No NPC Name",0,0]
 dummy_chr = {'Char_id': 0, 'Char_Name': 0, "BaseExp": -1, "JobExp": -1, "Zeny": -1}
 dummy_inv = {'Nameid': 0, 'Amount': 0}
@@ -48,7 +49,7 @@ waitingroom = {}
 mobskill = {}
 mobskill.setdefault('0',{})
 mobskill['0'].setdefault('0',{})
-mobskill['0']['0'] = [0,0,0,0,0,0,0,0,"",""]
+mobskill['0']['0'] = [0,0,0,0,0,0,0,0,"","",0]
 
 TargetIP = 0
 IgnorePacketAll = 0
@@ -59,6 +60,7 @@ SkillName = const.SKILLNAME
 EFST = const.EFST
 NPC = const.NPC
 MOB = const.MOB
+UNITID = const.UNITID
 RANDOPT = const.RANDOPT
 
 recv_q = queue.Queue()
@@ -72,9 +74,13 @@ RFIFOPOSX = lambda p, pos: (int(p[pos*2:pos*2+2],16)<<2) + ((int(p[pos*2+2:pos*2
 RFIFOPOSY = lambda p, pos: ((int(p[pos*2+2:pos*2+4],16)&0x3f)<<4) + ((int(p[pos*2+4:pos*2+6],16)&0xF0)>>4)
 RFIFOPOSD = lambda p, pos: (int(p[pos*2+4:pos*2+6],16)&0xF)
 
+RFIFOPOS2X = lambda p, pos: ((int(p[pos*2+4:pos*2+6],16)&0xF)<<6) + ((int(p[pos*2+6:pos*2+8],16)&0xFC)>>2)
+RFIFOPOS2Y = lambda p, pos: ((int(p[pos*2+6:pos*2+8],16)&0x03)<<8) + (int(p[pos*2+8:pos*2+10],16))
+
 gettick = lambda : int(time.time() * 1000)
 getskill = lambda n: n if not n in SkillName else SkillName[n]
 getefst = lambda n: n if not n in EFST else EFST[n]
+getunitid = lambda n: n if not n in UNITID else UNITID[n]
 getrandopt = lambda n: n if not n in RANDOPT else RANDOPT[n]
 
 def read_config_db():
@@ -268,6 +274,9 @@ class MARiA_Frame(wx.Frame):
 		clearcache = edit.Append(-1, "キャッシュクリア")
 		self.Bind(wx.EVT_MENU, self.OnClearCache, clearcache)
 
+		clearbuf = edit.Append(-1, "バッファクリア")
+		self.Bind(wx.EVT_MENU, self.OnClearBuffer, clearbuf)
+
 		clearbinary = edit.Append(-1, "バイナリ窓クリア")
 		self.Bind(wx.EVT_MENU, self.OnClearBinary, clearbinary)
 
@@ -291,12 +300,24 @@ class MARiA_Frame(wx.Frame):
 		p1 = wx.Panel(sp, -1)
 
 		hbox1 = wx.BoxSizer(wx.HORIZONTAL)
+
+		ip_array = ["127.0.0.1"]
+		st4 = wx.StaticText(p1, -1, 'Target IP:')
+		hbox1.Add(st4, 0, wx.LEFT | wx.BOTTOM | wx.TOP, 2)
+		self.addless = wx.ComboBox(
+			p1,
+			choices=ip_array,
+			style=wx.CB_READONLY,
+			size=(100,10))
+		hbox1.Add(self.addless, 1, wx.EXPAND)
+		self.Bind(wx.EVT_COMBOBOX, self.OnIPSelect, self.addless)
+
 		st3 = wx.StaticText(p1, -1, 'Char Port:')
 		hbox1.Add(st3, 0, wx.LEFT | wx.BOTTOM | wx.TOP, 2)
 		self.charport = wx.TextCtrl(
 			p1,
 			-1,
-			size=(40,10))
+			size=(20,10))
 		self.charport.WriteText('6121')
 		hbox1.Add(self.charport, 1, wx.EXPAND)
 
@@ -305,18 +326,18 @@ class MARiA_Frame(wx.Frame):
 		self.mapport = wx.TextCtrl(
 			p1,
 			-1,
-			size=(40,10))
+			size=(20,10))
 		self.mapport.WriteText('5121')
 		hbox1.Add(self.mapport, 1, wx.EXPAND)
 
 		st2 = wx.StaticText(p1, -1, 'Active Start:')
-		hbox1.Add(st2, 1, wx.RIGHT | wx.BOTTOM | wx.TOP, 2)
+		hbox1.Add(st2, 0, wx.RIGHT | wx.BOTTOM | wx.TOP, 2)
 		self.button = wx.Button(
 			p1,
 			-1,
 			'Start',
-			size=(20,20))
-		hbox1.Add(self.button,3)
+			size=(80,20))
+		hbox1.Add(self.button,2)
 		vbox.Add(hbox1, 0, wx.LEFT | wx.RIGHT | wx.TOP, 2)
 
 		self.btext = wx.TextCtrl(
@@ -347,7 +368,11 @@ class MARiA_Frame(wx.Frame):
 
 		host = socket.gethostname()
 		global TargetIP
-		TargetIP = socket.gethostbyname(host)
+		ip_array2 = socket.gethostbyname_ex(host)[2]
+		self.addless.Clear()
+		self.addless.AppendItems(ip_array2)
+		self.addless.SetSelection(0)
+		TargetIP = ip_array2[0]
 
 		self.text.AppendText("MARiA is Activeted, Target IP: " +TargetIP+ "\n")
 
@@ -366,12 +391,14 @@ class MARiA_Frame(wx.Frame):
 			self.button.SetLabel("Stop")
 			self.charport.Disable()
 			self.mapport.Disable()
+			self.addless.Disable()
 		else:
 			self.th.c_pause(True)
 			self.timer.Stop()
 			self.button.SetLabel("Start")
 			self.charport.Enable()
 			self.mapport.Enable()
+			self.addless.Enable()
 
 	def OnTimer(self, event):
 		if event.GetId() == MARiA_Frame.ID_TIMER:
@@ -386,7 +413,7 @@ class MARiA_Frame(wx.Frame):
 				if self.timerlockcnt >= 20:	#デッドロックの予感
 					self.timerlock		= 0
 					self.timerlockcnt	= 0
-					self.buf = ""
+					self.BufferReset()
 					print("DeadLock buf Clear\n")
 		else:
 			event.Skip()
@@ -444,7 +471,15 @@ class MARiA_Frame(wx.Frame):
 		mobskill = {}
 		mobskill.setdefault('0',{})
 		mobskill['0'].setdefault('0',{})
-		mobskill['0']['0'] = [0,0,0,0,0,0,0,0,"",""]
+		mobskill['0']['0'] = [0,0,0,0,0,0,0,0,"","",0]
+
+	def OnClearBuffer(self, event):
+		self.BufferReset()
+
+	def BufferReset(self):
+		del self.buf
+		gc.collect()
+		self.buf = ""
 
 	def OnClearBinary(self, event):
 		self.btext.Clear()
@@ -485,16 +520,25 @@ class MARiA_Frame(wx.Frame):
 		global mobskill
 		#Table class { skillid { (int)MinRecasttime, LastCasttick, (int)Casttime, (bool)NowCasting, (bool)CastCancel, skilllv, div, val } }
 		for class_ in mobskill.keys():
-			for skillid in mobskill[class_].keys():
-				casttype = 'yes'
-				if mobskill[class_][skillid][4] == 0:
-					casttype = 'no'
-				skilllv = mobskill[class_][skillid][5]
-				if skilllv == 65535:
-					skilllv = mobskill[class_][skillid][6]
-				if mobskill[class_][skillid][7] != 0:
-					skilllv = mobskill[class_][skillid][7]
-				self.text.AppendText("{},{}＠{},any,{},{},2000,{},{},{},{},always,0,,,,,,\n".format(class_,mobskill[class_][skillid][9],getskill(skillid),skillid,skilllv,mobskill[class_][skillid][2],mobskill[class_][skillid][0],casttype,mobskill[class_][skillid][8]))
+			if class_ != 0:
+				for skillid in mobskill[class_].keys():
+					casttype = 'yes'
+					if mobskill[class_][skillid][4] == 0:
+						casttype = 'no'
+					skilllv = mobskill[class_][skillid][5]
+					if skilllv == 65535:
+						skilllv = mobskill[class_][skillid][6]
+					if mobskill[class_][skillid][7] != 0:
+						skilllv = mobskill[class_][skillid][7]
+					if mobskill[class_][skillid][10] == 0:
+						mode = 'any'
+					elif mobskill[class_][skillid][10] == 1:
+						mode = 'attack'
+					elif mobskill[class_][skillid][10] == 2:
+						mode = 'chase'
+					elif mobskill[class_][skillid][10] == 3:
+						mode = 'attack/chase'
+					self.text.AppendText("{},{}＠{},{},{},{},2000,{},{},{},{},always,0,,,,,,\n".format(class_,mobskill[class_][skillid][9],getskill(skillid),mode,skillid,skilllv,mobskill[class_][skillid][2],mobskill[class_][skillid][0],casttype,mobskill[class_][skillid][8]))
 
 	def OnSaveFile(self, event):
 		try:
@@ -537,18 +581,25 @@ class MARiA_Frame(wx.Frame):
 						return aid
 		return -1
 
+	def OnIPSelect(self, event):
+		global TargetIP
+		obj = event.GetEventObject()
+		TargetIP = obj.GetStringSelection()
+		self.text.AppendText("MARiA is ReActivet, Target IP: " +TargetIP+ "\n")
+
 	def GetPacket(self):
 		buf = self.buf
 		tick = gettick()
 		self.timerlock = 1
+		#print("getpacket start:{}".format(buf))
 		while not buf == "":
 			lasttick = gettick()
-			if lasttick - tick > 2500:	#2500msを超えたら再帰
-				print("GetPacket timeout\n")
+			if lasttick - tick > 5000:	#2500msを超えたら再帰
+				print("GetPacket timeout lasttick:{}, tick:{}, buf:{}\n".format(lasttick, tick, buf))
 				break
 			total_len = len(buf)
 			if total_len < 4:	#4文字以下なら
-				print("GetPacket min bufber size\n")
+				print("GetPacket min buffer size, {}\n".format(buf))
 				break
 			num = RFIFOW(buf,0)
 			if num in Packetlen.keys():
@@ -564,7 +615,8 @@ class MARiA_Frame(wx.Frame):
 					else:
 						print("[Error] unknown ultra high packet, id: ",format(num, '#06x'),", prev:",format(self.prev_num, '#06x'),", clear buf: ",buf,"\n")
 						self.btext.AppendText("\nultrahigh_packetid_" + format(num, '#06x')+", prev:"+format(self.prev_num, '#06x'))
-						self.buf = buf = ''
+						buf = ""
+						self.BufferReset()
 						break
 				else:
 					snum = RFIFOW(buf,1)
@@ -582,12 +634,16 @@ class MARiA_Frame(wx.Frame):
 				if packet_len <= 0:
 					print("[Error] unknown packet len = 0: ",format(num, '#06x'),", prev:",format(self.prev_num, '#06x'),", clear buf: ",buf,"\n")
 					self.btext.AppendText("\n"+format(num, '#06x')+" len=0: Please check PacketLength.txt. (prev:" + format(self.prev_num, '#06x')+")\n")
-					self.buf = buf = ''
+					buf = ''
+					self.BufferReset()
 					break
 				elif packet_len >= 32000:
 					print("[Error] big packet len: ",format(num, '#06x'),", prev:",format(self.prev_num, '#06x'),", clear buf: ",buf,"\n")
-					self.btext.AppendText("\n"+format(num, '#06x')+" len=0: Please check PacketLength.txt. (prev:" + format(self.prev_num, '#06x')+")\n")
-					self.buf = buf = ''
+					self.btext.AppendText("\n"+format(num, '#06x')+" len=" +str(packet_len)+ ": Please check PacketLength.txt. (prev:" + format(self.prev_num, '#06x')+")\n")
+					str_ = binascii.unhexlify(buf.encode('utf-8')).decode('cp932','ignore')
+					self.text.AppendText(str_+ "\n")
+					buf = ''
+					self.BufferReset()
 					break
 			if packet_len*2 > total_len:	#パケット足りてない
 				#if self.packet_lasttick > 0 and lasttick - self.packet_lasttick > 10000:	#10000ms待機しても続きが来ない
@@ -635,7 +691,8 @@ class MARiA_Frame(wx.Frame):
 						self.ReadPacket(num, packet_len)
 				except Exception as e:
 					print(traceback.format_exc())
-					self.buf = buf = ''
+					buf = ''
+					self.BufferReset()
 					break
 			self.prev_num = num
 			if packet_len*2 < total_len:
@@ -686,13 +743,16 @@ class MARiA_Frame(wx.Frame):
 								if aid > 10000:
 									cflag = len(self.text.GetValue())
 								self.text.AppendText("@spawn(type: BL_MOB, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
-								mobdata[p][aid] = [m,x,y,s,view,speed,0,0,0]
+								mobdata[p][aid] = [m,x,y,0,0,s,view,speed,0,0,0]
 								if cflag > 0:
 									self.text.SetStyle(cflag, len(self.text.GetValue()), wx.TextAttr("red", "blue"))
 						else:
 							self.text.AppendText("@spawn(type: BL_MOB, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
-							mobdata[p] = { aid: [m,x,y,s,view,speed,0,0,0] }
+							mobdata[p] = { aid: [m,x,y,0,0,s,view,speed,0,0,0] }
 					elif type == 6 or type==12:
+						s3 = "script"
+						if type==12:
+							s3 = "script2"
 						if p in npcdata.keys():
 							if aid in npcdata[p].keys():
 								if npcdata[p][aid][NPC.CLASS] != view:
@@ -709,11 +769,13 @@ class MARiA_Frame(wx.Frame):
 									npcdata[p][aid][NPC.OPTION] = option
 									self.text.AppendText(s2+"\n")
 							else:
-								self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\tscript\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
+								self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\t" +s3+ "\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
 								npcdata[p][aid] = [m,x,y,dir,s,view,option]
 						else:
-							self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\tscript\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
+							self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\t" +s3+ "\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
 							npcdata[p] = { aid: [m,x,y,dir,s,view,option] }
+						if type==12:
+							self.text.AppendText("setnpcspeed {},\"{}\";\t// {}\n".format(speed,s,aid))
 				elif type==9:
 					self.text.AppendText("@spawn(type: BL_MERC, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+")\n")
 		elif num == 0x9ff:	#idle
@@ -757,13 +819,16 @@ class MARiA_Frame(wx.Frame):
 								if aid > 10000:
 									cflag = len(self.text.GetValue())
 								self.text.AppendText("@spawn(type: BL_MOB, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
-								mobdata[p][aid] = [m,x,y,s,view,speed,0,0,0]
+								mobdata[p][aid] = [m,x,y,0,0,s,view,speed,0,0,0]
 								if cflag > 0:
 									self.text.SetStyle(cflag, len(self.text.GetValue()), wx.TextAttr("red", "blue"))
 						else:
 							self.text.AppendText("@spawn(type: BL_MOB, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
-							mobdata[p] = { aid: [m,x,y,s,view,speed,0,0,0] }
+							mobdata[p] = { aid: [m,x,y,0,0,s,view,speed,0,0,0] }
 					elif type == 6 or type==12:
+						s3 = "script"
+						if type==12:
+							s3 = "script2"
 						if p in npcdata.keys():
 							if aid in npcdata[p].keys():
 								if npcdata[p][aid][NPC.CLASS] != view:
@@ -780,7 +845,7 @@ class MARiA_Frame(wx.Frame):
 									npcdata[p][aid][NPC.OPTION] = option
 									self.text.AppendText(s2+"\n")
 							else:
-								self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\tscript\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
+								self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\t" +s3+ "\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
 								npcdata[p][aid] = [m,x,y,dir,s,view,option]
 								if view < 45 or (view >= 4000 and view <= 4300):
 									hair	= RFIFOW(fd,25)
@@ -795,8 +860,10 @@ class MARiA_Frame(wx.Frame):
 									self.text.AppendText("// Name Class Sex ClothColor HairStyle HairColor Helm1 Helm2 Helm3 robe style.\n")
 									self.text.AppendText("OnInit:\n\tsetnpcdisplay \"{}\",{},{},{},{},{},{},{},{},{},{};\t// {}\n".format(npcdata[p][aid][NPC.NAME], view, sex, c_color, hair, h_color, top, mid, bottom, robe, style, aid))
 						else:
-							self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\tscript\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
+							self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\t" +s3+ "\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
 							npcdata[p] = { aid: [m,x,y,dir,s,view,option] }
+						if type==12:
+							self.text.AppendText("setnpcspeed {},\"{}\";\t// {}\n".format(speed,s,aid))
 		elif num == 0x9fd:	#move
 			if p_len > 90:
 				type	= RFIFOB(fd,4)
@@ -806,7 +873,8 @@ class MARiA_Frame(wx.Frame):
 				view	= RFIFOW(fd,23)
 				x		= RFIFOPOSX(fd,67)
 				y		= RFIFOPOSY(fd,67)
-				dir		= RFIFOPOSD(fd,67)
+				to_x	= RFIFOPOS2X(fd,67)
+				to_y	= RFIFOPOS2Y(fd,67)
 				if type==5 or type==6 or type==12:
 					i = 90
 					s = fd[i*2:p_len*2]
@@ -829,37 +897,43 @@ class MARiA_Frame(wx.Frame):
 									if mobdata[p][aid][MOB.SPAWNTICK] == 0 or mobdata[p][aid][MOB.SPAWNTICK] > spawntick:
 										mobdata[p][aid][MOB.SPAWNTICK] = spawntick
 									mobdata[p][aid][MOB.DEADTICK] = 0
+								mobdata[p][aid][MOB.POSX] = x
+								mobdata[p][aid][MOB.POSY] = y
+								mobdata[p][aid][MOB.POS2X] = to_x
+								mobdata[p][aid][MOB.POS2Y] = to_y
 							else:
 								cflag = 0
 								if aid > 10000:
 									cflag = len(self.text.GetValue())
-								self.text.AppendText("@move(type: BL_MOB, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
-								mobdata[p][aid] = [m,x,y,s,view,speed,0,0,0]
+								self.text.AppendText("@move(type: BL_MOB, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), name\""+ s +"\")\n")
+								mobdata[p][aid] = [m,x,y,to_x,to_y,s,view,speed,0,0,0]
 								if cflag > 0:
 									self.text.SetStyle(cflag, len(self.text.GetValue()), wx.TextAttr("red", "blue"))
 						else:
-							self.text.AppendText("@move(type: BL_MOB, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
-							mobdata[p] = { aid: [m,x,y,s,view,speed,0,0,0] }
+							self.text.AppendText("@move(type: BL_MOB, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), name\""+ s +"\")\n")
+							mobdata[p] = { aid: [m,x,y,to_x,to_y,s,view,speed,0,0,0] }
 					elif type == 6:
 						if p in npcdata.keys():
 							if aid in npcdata[p].keys():
 								pass
 							else:
-								self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\tscript\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
-								npcdata[p][aid] = [m,x,y,dir,s,view,option]
+								self.text.AppendText(m+","+ str(x) + ","+ str(y) +",0\tscript\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
+								npcdata[p][aid] = [m,x,y,0,s,view,option]
 						else:
-							self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\tscript\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
-							npcdata[p] = { aid: [m,x,y,dir,s,view,option] }
+							self.text.AppendText(m+","+ str(x) + ","+ str(y) +",0\tscript\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
+							npcdata[p] = { aid: [m,x,y,0,s,view,option] }
 					elif type == 12:
 						if p in npcdata.keys():
 							if aid in npcdata[p].keys():
-								self.text.AppendText("@move(type: BL_WALKNPC, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
+								if self.scripttimer.IsChecked() == 1:
+									self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
+								self.text.AppendText("npcwalkto {},{},\"{}\";\t// {}: speed:{}\n".format(to_x,to_y,s,aid,speed))
 							else:
-								self.text.AppendText("@move(type: BL_WALKNPC, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
-								npcdata[p][aid] = [m,x,y,dir,s,view,option]
+								self.text.AppendText("@move(type: BL_WALKNPC, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+" to:"+str(to_x)+","+str(to_y)+"), name\""+ s +"\")\n")
+								npcdata[p][aid] = [m,x,y,0,s,view,option]
 						else:
-							self.text.AppendText("@move(type: BL_WALKNPC, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+"), dir: "+str(dir)+", name\""+ s +"\")\n")
-							npcdata[p] = { aid: [m,x,y,dir,s,view,option] }
+							self.text.AppendText("@move(type: BL_WALKNPC, ID: "+str(aid)+", speed: "+str(speed)+", option: "+str(hex(option))+", class: "+str(view)+", pos: (\"" +m+ "\","+str(x)+","+str(y)+" to:"+str(to_x)+","+str(to_y)+"), name\""+ s +"\")\n")
+							npcdata[p] = { aid: [m,x,y,0,s,view,option] }
 		elif num == 0x0b4:	#mes
 			s = fd[8*2:p_len*2-2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
@@ -1057,6 +1131,9 @@ class MARiA_Frame(wx.Frame):
 							mobdata[p][aid][MOB.TICK] = prev
 						else:
 							mobdata[p][aid][MOB.TICK] = tick
+						if mobdata[p][aid][MOB.POS2X] > 0:
+							mobdata[p][aid][MOB.POS2X] = 0
+							mobdata[p][aid][MOB.POS2Y] = 0
 						self.text.AppendText("@nomalattack_lower(src: {}:\"{}\"({}), dst: ({}), damage: {}, sDelay: {}, dDelay: {}, tick: {})\n".format(mobdata[p][aid][MOB.CLASS],mobdata[p][aid][MOB.NAME],aid,dst,damage,sdelay,ddelay,tick))
 		elif num == 0x2e1 or num == 0x8c8:	#nomalattack
 			type = RFIFOB(fd,29) if num == 0x8c8 else RFIFOB(fd,28)
@@ -1073,7 +1150,11 @@ class MARiA_Frame(wx.Frame):
 				damage	= RFIFOL(fd,22)
 				p		= self.mapport.GetValue()
 				if chrdata['aid'] == aid:
-					self.text.AppendText("@nomalattack(dst: ({}), damage: {}, sDelay: {}, dDelay: {}, tick: {})\t// self\n".format(dst,damage,sdelay,ddelay,tick))
+					if p in mobdata.keys():
+						if dst in mobdata[p].keys():
+							self.text.AppendText("@nomalattack(dst: {}:\"{}\"({}), damage: {}, sDelay: {}, dDelay: {}, tick: {})\t// self\n".format(mobdata[p][dst][MOB.CLASS],mobdata[p][dst][MOB.NAME],dst,damage,sdelay,ddelay,tick))
+					else:
+						self.text.AppendText("@nomalattack(dst: ({}), damage: {}, sDelay: {}, dDelay: {}, tick: {})\t// self\n".format(dst,damage,sdelay,ddelay,tick))
 				elif p in mobdata.keys():
 					if aid in mobdata[p].keys():
 						if mobdata[p][aid][MOB.TICK] > 0:
@@ -1082,6 +1163,9 @@ class MARiA_Frame(wx.Frame):
 							mobdata[p][aid][MOB.TICK] = prev
 						else:
 							mobdata[p][aid][MOB.TICK] = tick
+						if mobdata[p][aid][MOB.POS2X] > 0:
+							mobdata[p][aid][MOB.POS2X] = 0
+							mobdata[p][aid][MOB.POS2Y] = 0
 						self.text.AppendText("@nomalattack(src: {}:\"{}\"({}), dst: ({}), damage: {}, sDelay: {}, dDelay: {}, tick: {})\n".format(mobdata[p][aid][MOB.CLASS],mobdata[p][aid][MOB.NAME],aid,dst,damage,sdelay,ddelay,tick))
 		elif num == 0x13e or num == 0x7fb:	#skill_casting
 			aid		= RFIFOL(fd,2)
@@ -1101,20 +1185,29 @@ class MARiA_Frame(wx.Frame):
 						target = "self"
 					elif dst in mobdata[p].keys():
 						target = "friend"
+					mode = 0
+					if mobdata[p][aid][MOB.POS2X] > 0:
+						mode |= 0x2
+					elif mobdata[p][aid][MOB.POS2X] == 0:
+						mode |= 0x1
 					#Table class { skillid { (int)MinRecasttime, LastCasttick, (int)Casttime, (bool)NowCasting, (bool)CastCancel, skilllv, div, val } }
 					if mobdata[p][aid][MOB.CLASS] in mobskill.keys():
 						if skillid in mobskill[mobdata[p][aid][MOB.CLASS]].keys():
 							#LastCasttickが入ってれば現時刻との差分をMinRecasttimeとしてとる
 							if mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1] > 0:
-								mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] = gettick() - mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1]
+								#MinRecasttimeが0か、より短くなるので更新
+								if mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] == 0 or mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] > gettick() - mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1]:
+									mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] = gettick() - mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1]
 							#NowCastingフラグを立てLastCasttickに時刻をいれ、Casttimeを格納する
 							mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1] = gettick()
 							mobskill[mobdata[p][aid][MOB.CLASS]][skillid][2] = tick
 							mobskill[mobdata[p][aid][MOB.CLASS]][skillid][3] = 1
+							#すでにmodeが入ってるかもしれないけど更新
+							mobskill[mobdata[p][aid][MOB.CLASS]][skillid][10] = mode
 						else:
-							mobskill[mobdata[p][aid][MOB.CLASS]][skillid] = [0,gettick(),tick,1,0,0,0,0,target,mobdata[p][aid][MOB.NAME]]
+							mobskill[mobdata[p][aid][MOB.CLASS]][skillid] = [0,gettick(),tick,1,0,0,0,0,target,mobdata[p][aid][MOB.NAME],mode]
 					else:
-						mobskill[mobdata[p][aid][MOB.CLASS]] = { skillid: [0,gettick(),tick,1,0,0,0,0,target,mobdata[p][aid][MOB.NAME]] }
+						mobskill[mobdata[p][aid][MOB.CLASS]] = { skillid: [0,gettick(),tick,1,0,0,0,0,target,mobdata[p][aid][MOB.NAME],mode] }
 		elif num == 0x1b9:	#skill_castcancel
 			aid		= RFIFOL(fd,2)
 			p		= self.mapport.GetValue()
@@ -1154,6 +1247,11 @@ class MARiA_Frame(wx.Frame):
 						target = "self"
 					elif dst in mobdata[p].keys():
 						target = "friend"
+					mode = 0
+					if mobdata[p][aid][MOB.POS2X] > 0:
+						mode |= 0x2
+					elif mobdata[p][aid][MOB.POS2X] == 0:
+						mode |= 0x1
 					if mobdata[p][aid][MOB.CLASS] in mobskill.keys():
 						if skillid in mobskill[mobdata[p][aid][MOB.CLASS]].keys():
 							#NowCastingが立ってたら詠唱付スキル
@@ -1163,15 +1261,19 @@ class MARiA_Frame(wx.Frame):
 							else:
 								#LastCasttickが入ってれば現時刻との差分をMinRecasttimeとしてとる
 								if mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1] > 0:
-									mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] = gettick() - mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1]
+									#MinRecasttimeが0か、より短くなるので更新
+									if mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] == 0 or mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] > gettick() - mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1]:
+										mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] = gettick() - mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1]
 								#LastCasttickに時刻をいれ、データ各種格納
 								mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1] = gettick()
 								mobskill[mobdata[p][aid][MOB.CLASS]][skillid][5] = skilllv
 								mobskill[mobdata[p][aid][MOB.CLASS]][skillid][6] = div_
+								#すでにmodeが入ってるかもしれないけど更新
+								mobskill[mobdata[p][aid][MOB.CLASS]][skillid][10] = mode
 						else:
-							mobskill[mobdata[p][aid][MOB.CLASS]][skillid] = [0,gettick(),0,0,0,skilllv,div_,0,target,mobdata[p][aid][MOB.NAME]]
+							mobskill[mobdata[p][aid][MOB.CLASS]][skillid] = [0,gettick(),0,0,0,skilllv,div_,0,target,mobdata[p][aid][MOB.NAME],mode]
 					else:
-						mobskill[mobdata[p][aid][MOB.CLASS]] = { skillid: [0,gettick(),0,0,0,skilllv,div_,0,target,mobdata[p][aid][MOB.NAME]] }
+						mobskill[mobdata[p][aid][MOB.CLASS]] = { skillid: [0,gettick(),0,0,0,skilllv,div_,0,target,mobdata[p][aid][MOB.NAME],mode] }
 			elif p in npcdata.keys():
 				if aid in npcdata[p].keys():
 					if self.scripttimer.IsChecked() == 1:
@@ -1195,6 +1297,11 @@ class MARiA_Frame(wx.Frame):
 						target = "self"
 					elif dst in mobdata[p].keys():
 						target = "friend"
+					mode = 0
+					if mobdata[p][aid][MOB.POS2X] > 0:
+						mode |= 0x2
+					elif mobdata[p][aid][MOB.POS2X] == 0:
+						mode |= 0x1
 					#Table class { skillid { (int)MinRecasttime, LastCasttick, (int)Casttime, (bool)NowCasting, (bool)CastCancel, skilllv, div, val } }
 					if mobdata[p][aid][MOB.CLASS] in mobskill.keys():
 						if skillid in mobskill[mobdata[p][aid][MOB.CLASS]].keys():
@@ -1205,14 +1312,18 @@ class MARiA_Frame(wx.Frame):
 							else:
 								#LastCasttickが入ってれば現時刻との差分をMinRecasttimeとしてとる
 								if mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1] > 0:
-									mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] = gettick() - mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1]
+									#MinRecasttimeが0か、より短くなるので更新
+									if mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] == 0 or mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] > gettick() - mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1]:
+										mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] = gettick() - mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1]
 								#LastCasttickに時刻をいれ、データ各種格納
 								mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1] = gettick()
 								mobskill[mobdata[p][aid][MOB.CLASS]][skillid][7] = val
+							#すでにmodeが入ってるかもしれないけど更新
+							mobskill[mobdata[p][aid][MOB.CLASS]][skillid][10] = mode
 						else:
-							mobskill[mobdata[p][aid][MOB.CLASS]][skillid] = [0,gettick(),0,0,0,0,0,val,target,mobdata[p][aid][MOB.NAME]]
+							mobskill[mobdata[p][aid][MOB.CLASS]][skillid] = [0,gettick(),0,0,0,0,0,val,target,mobdata[p][aid][MOB.NAME],mode]
 					else:
-						mobskill[mobdata[p][aid][MOB.CLASS]] = { skillid: [0,gettick(),0,0,0,0,0,val,target,mobdata[p][aid][MOB.NAME]] }
+						mobskill[mobdata[p][aid][MOB.CLASS]] = { skillid: [0,gettick(),0,0,0,0,0,val,target,mobdata[p][aid][MOB.NAME],mode] }
 			elif p in npcdata.keys():
 				if aid in npcdata[p].keys():
 					if self.scripttimer.IsChecked() == 1:
@@ -1226,6 +1337,8 @@ class MARiA_Frame(wx.Frame):
 			p		= self.mapport.GetValue()
 			if self.hiddenbattle.IsChecked() == 1:
 				pass
+			if aid == 0:
+				pass
 			elif p in mobdata.keys():
 				if aid in mobdata[p].keys():
 					if self.scripttimer.IsChecked() == 1:
@@ -1236,6 +1349,11 @@ class MARiA_Frame(wx.Frame):
 						target = "self"
 					elif dst in mobdata[p].keys():
 						target = "friend"
+					mode = 0
+					if mobdata[p][aid][MOB.POS2X] > 0:
+						mode |= 0x2
+					elif mobdata[p][aid][MOB.POS2X] == 0:
+						mode |= 0x1
 					#Table class { skillid { (int)MinRecasttime, LastCasttick, (int)Casttime, (bool)NowCasting, (bool)CastCancel, skilllv, div, val } }
 					if mobdata[p][aid][MOB.CLASS] in mobskill.keys():
 						if skillid in mobskill[mobdata[p][aid][MOB.CLASS]].keys():
@@ -1246,14 +1364,18 @@ class MARiA_Frame(wx.Frame):
 							else:
 								#LastCasttickが入ってれば現時刻との差分をMinRecasttimeとしてとる
 								if mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1] > 0:
-									mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] = gettick() - mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1]
+									#MinRecasttimeが0か、より短くなるので更新
+									if mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] == 0 or mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] > gettick() - mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1]:
+										mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] = gettick() - mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1]
 								#LastCasttickに時刻をいれ、データ各種格納
 								mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1] = gettick()
 								mobskill[mobdata[p][aid][MOB.CLASS]][skillid][7] = val
+							#すでにmodeが入ってるかもしれないけど更新
+							mobskill[mobdata[p][aid][MOB.CLASS]][skillid][10] = mode
 						else:
-							mobskill[mobdata[p][aid][MOB.CLASS]][skillid] = [0,gettick(),0,0,0,0,0,val,target,mobdata[p][aid][MOB.NAME]]
+							mobskill[mobdata[p][aid][MOB.CLASS]][skillid] = [0,gettick(),0,0,0,0,0,val,target,mobdata[p][aid][MOB.NAME],mode]
 					else:
-						mobskill[mobdata[p][aid][MOB.CLASS]] = { skillid: [0,gettick(),0,0,0,0,0,val,target,mobdata[p][aid][MOB.NAME]] }
+						mobskill[mobdata[p][aid][MOB.CLASS]] = { skillid: [0,gettick(),0,0,0,0,0,val,target,mobdata[p][aid][MOB.NAME],mode] }
 			elif p in npcdata.keys():
 				if aid in npcdata[p].keys():
 					if self.scripttimer.IsChecked() == 1:
@@ -1274,6 +1396,15 @@ class MARiA_Frame(wx.Frame):
 					if self.scripttimer.IsChecked() == 1:
 						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 					self.text.AppendText("@skillposeffect(src: {}:\"{}\"({}), skill: \"{}\"({}), val: {}, pos({}, {}), tick: {})\n".format(mobdata[p][aid][MOB.CLASS],mobdata[p][aid][MOB.NAME], aid, getskill(skillid), skillid, val, x, y, tick))
+					target = "around"
+					#現在地か行き先が詠唱先と同じなら
+					if (mobdata[p][aid][MOB.POSX] == x and mobdata[p][aid][MOB.POSY] == y) or (mobdata[p][aid][MOB.POS2X] == x and mobdata[p][aid][MOB.POS2Y] == y):
+						target = "self"
+					mode = 0
+					if mobdata[p][aid][MOB.POS2X] > 0:
+						mode |= 0x2
+					elif mobdata[p][aid][MOB.POS2X] == 0:
+						mode |= 0x1
 					#Table class { skillid { (int)MinRecasttime, LastCasttick, (int)Casttime, (bool)NowCasting, (bool)CastCancel, skilllv, div, val } }
 					if mobdata[p][aid][MOB.CLASS] in mobskill.keys():
 						if skillid in mobskill[mobdata[p][aid][MOB.CLASS]].keys():
@@ -1284,14 +1415,18 @@ class MARiA_Frame(wx.Frame):
 							else:
 								#LastCasttickが入ってれば現時刻との差分をMinRecasttimeとしてとる
 								if mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1] > 0:
-									mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] = gettick() - mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1]
+									#MinRecasttimeが0か、より短くなるので更新
+									if mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] == 0 or mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] > gettick() - mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1]:
+										mobskill[mobdata[p][aid][MOB.CLASS]][skillid][0] = gettick() - mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1]
 								#LastCasttickに時刻をいれ、データ各種格納
 								mobskill[mobdata[p][aid][MOB.CLASS]][skillid][1] = gettick()
 								#mobskill[mobdata[p][aid][MOB.CLASS]][skillid][7] = val
+							#すでにmodeが入ってるかもしれないけど更新
+							mobskill[mobdata[p][aid][MOB.CLASS]][skillid][10] = mode
 						else:
-							mobskill[mobdata[p][aid][MOB.CLASS]][skillid] = [0,gettick(),0,0,0,0,0,0,"around",mobdata[p][aid][MOB.NAME]]
+							mobskill[mobdata[p][aid][MOB.CLASS]][skillid] = [0,gettick(),0,0,0,0,0,0,target,mobdata[p][aid][MOB.NAME],mode]
 					else:
-						mobskill[mobdata[p][aid][MOB.CLASS]] = { skillid: [0,gettick(),0,0,0,0,0,0,"around",mobdata[p][aid][MOB.NAME]] }
+						mobskill[mobdata[p][aid][MOB.CLASS]] = { skillid: [0,gettick(),0,0,0,0,0,0,target,mobdata[p][aid][MOB.NAME],mode] }
 			elif p in npcdata.keys():
 				if aid in npcdata[p].keys():
 					if self.scripttimer.IsChecked() == 1:
@@ -1310,7 +1445,21 @@ class MARiA_Frame(wx.Frame):
 				if aid in mobdata[p].keys():
 					if self.scripttimer.IsChecked() == 1:
 						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
-					self.text.AppendText("@skillunit_appeared(\""+mobdata[p][aid][MOB.NAME]+"\"(" +str(aid)+ "), pos("+str(x)+", "+str(y)+"), unit_id: "+str(hex(unit_id))+"), skill_lv: "+str(skilllv)+")\n")
+					self.text.AppendText("@skillunit_appeared(\"{}\"({}), pos({}, {}), unit_id: {}({}), skill_lv: {})\n".format(mobdata[p][aid][MOB.NAME], aid, x, y, getunitid(unit_id), hex(unit_id), skilllv))
+		elif num == 0xa41:	#warningplean
+			aid		= RFIFOL(fd,2)
+			skillid	= RFIFOW(fd,6)
+			skilllv	= RFIFOW(fd,8)
+			x		= RFIFOW(fd,10)
+			y		= RFIFOW(fd,12)
+			p		= self.mapport.GetValue()
+			if self.hiddenbattle.IsChecked() == 1:
+				pass
+			elif p in mobdata.keys():
+				if aid in mobdata[p].keys():
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
+					self.text.AppendText("@skill_warningplean(\"{}\"({}), pos({}, {}), skill_id: {}, skill_lv: {})\n".format(mobdata[p][aid][MOB.NAME], aid, x, y, skillid, skilllv))
 		elif num == 0x080:	#clear_unit
 			aid		= RFIFOL(fd,2)
 			type	= RFIFOB(fd,6)
@@ -1319,8 +1468,10 @@ class MARiA_Frame(wx.Frame):
 				pass
 			elif p in mobdata.keys():
 				if aid in mobdata[p].keys():
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
+					self.text.AppendText("@mob_defeated(\"{}\"({}), type: {})\n".format(mobdata[p][aid][MOB.NAME], aid, type))
 					if type == 1:
-						self.text.AppendText("@mob_defeated(\""+mobdata[p][aid][MOB.NAME]+"\"(" +str(aid)+ "))\n")
 						mobdata[p][aid][MOB.DEADTICK] = gettick()
 		elif num == 0xacc:	#gainexp
 			exp		= RFIFOQ(fd,6)
@@ -1378,16 +1529,17 @@ class MARiA_Frame(wx.Frame):
 					if self.scripttimer.IsChecked() == 1:
 						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 					self.text.AppendText("emotion "+str(type)+",\""+npcdata[p][aid][NPC.NAME]+"\";\t// " +str(aid)+ "\n")
-			else:
-				if p_len*2+2 < len(self.buf):
-					next_num = RFIFOW(self.buf,7)
-					if next_num == 0x1de or next_num == 0x11a or next_num == 0x9cb or next_num == 0x117:
-						skillid	= RFIFOW(self.buf,9)
-						if p in mobdata.keys():
-							if aid in mobdata[p].keys():
-								if self.scripttimer.IsChecked() == 1:
-									self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
-								self.text.AppendText("@emotion_skill "+str(type)+",\""+mobdata[p][aid][MOB.NAME]+"\";\t// " +getskill(skillid)+ ":" +str(aid)+ "\n")
+			elif p in mobdata.keys():
+				if aid in mobdata[p].keys():
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
+					if p_len*2+2 < len(self.buf):
+						next_num = RFIFOW(self.buf,7)
+						if next_num == 0x1de or next_num == 0x11a or next_num == 0x9cb or next_num == 0x117:
+							skillid	= RFIFOW(self.buf,9)
+							self.text.AppendText("@emotion_skill "+str(type)+",\""+mobdata[p][aid][MOB.NAME]+"\";\t// " +getskill(skillid)+ ":" +str(aid)+ "\n")
+					else:
+						self.text.AppendText("@emotion "+str(type)+",\""+mobdata[p][aid][MOB.NAME]+"\";\t// " +str(aid)+ "\n")
 		elif num == 0x19b or num == 0x1f3:	#misceffect
 			aid		= RFIFOL(fd,2)
 			type	= RFIFOL(fd,6)
@@ -1406,6 +1558,25 @@ class MARiA_Frame(wx.Frame):
 					if self.scripttimer.IsChecked() == 1:
 						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 					self.text.AppendText("@misceffect "+str(type)+",\""+mobdata[p][aid][MOB.NAME]+"\";\t// " +str(aid)+ "\n")
+		elif num == 0x284:	#misceffect_value
+			aid		= RFIFOL(fd,2)
+			type	= RFIFOL(fd,6)
+			num		= RFIFOL(fd,10)
+			p		= self.mapport.GetValue()
+			if chrdata['aid'] == aid:
+				if self.scripttimer.IsChecked() == 1:
+					self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
+				self.text.AppendText("misceffect_value {},{},\"\";\t// self\n".format(type,num))
+			elif p in npcdata.keys():
+				if aid in npcdata[p].keys():
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
+					self.text.AppendText("misceffect_value {},{},\"{}\";\t// {}\n".format(type,num,npcdata[p][aid][NPC.NAME],aid))
+			elif p in mobdata.keys():
+				if aid in mobdata[p].keys():
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
+					self.text.AppendText("@misceffect_value {},{},\"{}\";\t// {}\n".format(type,num,mobdata[p][aid][MOB.NAME],aid))
 		elif num == 0x144:	#viewpoint
 			aid		= RFIFOL(fd,2)
 			type	= RFIFOL(fd,6)
@@ -1443,7 +1614,8 @@ class MARiA_Frame(wx.Frame):
 		elif num == 0x1d3:	#soundeffect
 			s = fd[2*2:26*2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
-			s = s.replace("\0","")
+			#s = "" if s[0] == '\0' else s
+			s = s[:s.find('\0')]
 			type		= RFIFOB(fd,26)
 			interval	= RFIFOL(fd,27)
 			aid			= RFIFOL(fd,31)
@@ -1453,7 +1625,8 @@ class MARiA_Frame(wx.Frame):
 		elif num == 0x7fe:	#musiceffect
 			s = fd[2*2:26*2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
-			s = s.replace("\0","")
+			#s = "" if s[0] == '\0' else s
+			s = s[:s.find('\0')]
 			if self.scripttimer.IsChecked() == 1:
 				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("musiceffect \""+s+"\";\n")
@@ -1461,7 +1634,8 @@ class MARiA_Frame(wx.Frame):
 			type		= RFIFOB(fd,4)
 			s = fd[5*2:]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
-			s = s.replace("\0","")
+			#s = "" if s[0] == '\0' else s
+			s = s[:s.find('\0')]
 			if self.scripttimer.IsChecked() == 1:
 				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("musiceffect \"{}\",{};\n".format(s,type))
@@ -1605,7 +1779,10 @@ class MARiA_Frame(wx.Frame):
 							npcdata[p][aid][NPC.MAP],npcdata[p][aid][NPC.POSX],npcdata[p][aid][NPC.POSY],npcdata[p][aid][NPC.NAME], s, x, y, aid, chrdata['mapname'], chrdata['x'], chrdata['y']))
 						warpnpc[p] = { aid: npcdata[p][aid][NPC.NAME] }
 				else:
-					self.text.AppendText("warp \"{}\", {}, {};\t// from: {}({}, {})\n".format(s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
+					if not '@' in s:
+						self.text.AppendText("warp \"{}\", {}, {};\t// from: {}({}, {})\n".format(s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
+					else:
+						self.text.AppendText("warp getmdmapname(\"{}\"), {}, {};\t// from: {}({}, {})\n".format(s, x, y, chrdata['mapname'], chrdata['x'], chrdata['y']))
 				chrdata['mapname'] = s
 				chrdata['x'] = x
 				chrdata['y'] = y
@@ -1657,10 +1834,17 @@ class MARiA_Frame(wx.Frame):
 			aid	= RFIFOL(fd,2)
 			x	= RFIFOW(fd,6)
 			y	= RFIFOW(fd,8)
+			p	= self.mapport.GetValue()
 			if chrdata['aid'] == aid:
 				chrdata['x'] = x
 				chrdata['y'] = y
 				self.statusbar.SetStatusText(chrdata['mapname']+':('+str(chrdata['x'])+', '+str(chrdata['y'])+")", 0)
+			elif p in mobdata.keys():
+				if aid in mobdata[p].keys():
+					mobdata[p][aid][MOB.POSX] = x
+					mobdata[p][aid][MOB.POSY] = y
+					#mobdata[p][aid][MOB.POS2X] = 0
+					#mobdata[p][aid][MOB.POS2Y] = 0
 		elif num == 0x2eb or num == 0xa18:	#authok
 			x	= RFIFOPOSX(fd,6)
 			y	= RFIFOPOSY(fd,6)
@@ -1884,6 +2068,8 @@ class MARiA_Frame(wx.Frame):
 				if chrdata['aid'] == aid:
 					if type == 665:	#EFST_ACTIVE_MONSTER_TRANSFORM
 						self.text.AppendText("@active_montransform {};\t// self\n".format(val1))
+					else:
+						self.text.AppendText("@sc_start3 {},{},{},{},0,{},{},{};\t// self\n".format(getefst(type),val1,val2,val3,mtick,tick,flag))
 			else:
 				p	= self.mapport.GetValue()
 				if chrdata['aid'] == aid:
@@ -1901,8 +2087,8 @@ class MARiA_Frame(wx.Frame):
 			val3	= RFIFOL(fd,21)
 			if self.hiddenbattle.IsChecked() == 1:
 				pass
-			elif tick == 9999:
-				pass
+			#elif tick == 9999:
+				#pass
 			else:
 				p	= self.mapport.GetValue()
 				if chrdata['aid'] == aid:
@@ -1919,8 +2105,8 @@ class MARiA_Frame(wx.Frame):
 			val3	= RFIFOL(fd,20)
 			if self.hiddenbattle.IsChecked() == 1:
 				pass
-			elif tick == 9999 or type == 993:
-				pass
+			#elif tick == 9999 or type == 993:
+				#pass
 			else:
 				p	= self.mapport.GetValue()
 				if chrdata['aid'] == aid:
@@ -1938,8 +2124,8 @@ class MARiA_Frame(wx.Frame):
 			val3	= RFIFOL(fd,24)
 			if self.hiddenbattle.IsChecked() == 1:
 				pass
-			elif mtick == 9999 or type == 993:
-				pass
+			#elif mtick == 9999 or type == 993:
+				#pass
 			else:
 				p	= self.mapport.GetValue()
 				if chrdata['aid'] == aid:
@@ -1974,22 +2160,26 @@ class MARiA_Frame(wx.Frame):
 			p	= self.mapport.GetValue()
 			s = fd[10*2:34*2-2]
 			s = binascii.unhexlify(s.encode('utf-8')).decode('cp932','ignore')
-			s = s.replace("\0","")
+			#s = "" if s[0] == '\0' else s
+			#s = s.replace("\0","")
+			s = s[:s.find('\0')]
 			t = fd[34*2:]
 			t = binascii.unhexlify(t.encode('utf-8')).decode('cp932','ignore')
-			t = t.replace("\0","")
+			#t = "" if t[0] == '\0' else t
+			#t = t.replace("\0","")
+			t = t[:t.find('\0')]
 			if p in npcdata.keys():
 				if aid in npcdata[p].keys():
 					if group_id != 0:
-						self.text.AppendText("//setgroupid "+ str(group_id) + ";\t// NPC:" +str(s)+ "(" +str(aid)+ ")\n")
+						self.text.AppendText("setnpcgroup "+ str(group_id) + ";\t// NPC:" +str(s)+ "(" +str(aid)+ ")\n")
 					if len(t) > 0:
-						self.text.AppendText("//settitle \""+ t + "\";\t// NPC:" +str(s)+ "(" +str(aid)+ ")\n")
+						self.text.AppendText("setnpctitle \""+ t + "\";\t// NPC:" +str(s)+ "(" +str(aid)+ ")\n")
 			elif p in mobdata.keys():
 				if aid in mobdata[p].keys():
 					if group_id != 0:
-						self.text.AppendText("//setgroupid "+ str(group_id) + ";\t// MOB:" +str(s)+ "(" +str(aid)+ ")\n")
+						self.text.AppendText("setunitgroup "+ str(group_id) + ";\t// MOB:" +str(s)+ "(" +str(aid)+ ")\n")
 					if len(t) > 0:
-						self.text.AppendText("//settitle \""+ t + "\";\t// MOB:" +str(s)+ "(" +str(aid)+ ")\n")
+						self.text.AppendText("setunittitle \""+ t + "\";\t// MOB:" +str(s)+ "(" +str(aid)+ ")\n")
 		elif num == 0xa24:	#acievement update
 			nameid = RFIFOL(fd,16)
 			if self.scripttimer.IsChecked() == 1:
@@ -2062,7 +2252,7 @@ class MARiA_Frame(wx.Frame):
 			p	= self.mapport.GetValue()
 			if p in npcdata.keys():
 				if aid in npcdata[p].keys():
-					self.text.AppendText("showevent "+str(state)+", "+str(type)+", "+npcdata[p][aid][NPC.NAME]+";\t// " +str(aid)+ ": "+str(x)+", "+str(y)+"\n")
+					self.text.AppendText("showevent "+str(state)+", "+str(type)+", \""+npcdata[p][aid][NPC.NAME]+"\";\t// " +str(aid)+ ": "+str(x)+", "+str(y)+"\n")
 				else:
 					self.text.AppendText("@showevent "+str(state)+", "+str(type)+";\t// " +str(aid)+ ": "+str(x)+", "+str(y)+"\n")
 			else:
@@ -2127,6 +2317,64 @@ class MARiA_Frame(wx.Frame):
 				if p in npcdata.keys():
 					if aid in npcdata[p].keys():
 						self.text.AppendText(npcdata[p][aid][NPC.MAP]+","+ str(npcdata[p][aid][NPC.POSX]) + ","+ str(npcdata[p][aid][NPC.POSY]) +","+ str(npcdata[p][aid][NPC.POSD]) +"\texchange\t"+ str(npcdata[p][aid][NPC.NAME]) +"\t"+ str(npcdata[p][aid][NPC.CLASS]) + "," +s +"\t// "+ str(aid) +"\n")
+			self.tmp_id = 0
+		elif num == 0xb56:	#npcbartershop
+			i = 0
+			d = 0
+			s = ""
+			while i*26+d+8 < p_len:
+				if i > 0:
+					s += ","
+				s	+= str(RFIFOL(fd,8+i*26+d))
+				s	+= ":"
+				num	= RFIFOL(fd,12+i*26+d)
+				if num == 4294901764:
+					num = -1
+				s	+= str(num)
+				s	+= ":"
+				s	+= str(RFIFOL(fd,26+i*26+d))
+				c	=  RFIFOL(fd,30+i*26+d)
+				s	+= " { "
+				s	+= str(RFIFOL(fd,34+i*26+d))
+				s	+= ":"
+				num	= RFIFOL(fd,38+i*26+d)
+				if num == 6553600:
+					num = -1
+				s	+= str(num)
+				s	+= ":"
+				s	+= str(RFIFOL(fd,40+i*26+d))
+				if c >= 2:
+					s	+= ", "
+					s	+= str(RFIFOL(fd,46+i*26+d))
+					s	+= ":"
+					num	= RFIFOL(fd,50+i*26+d)
+					if num == 6553600:
+						num = -1
+					s	+= str(num)
+					s	+= ":"
+					s	+= str(RFIFOL(fd,52+i*26+d))
+				if c == 3:
+					s	+= ", "
+					s	+= str(RFIFOL(fd,58+i*26+d))
+					s	+= ":"
+					num	= RFIFOL(fd,62+i*26+d)
+					if num == 6553600:
+						num = -1
+					s	+= str(num)
+					s	+= ":"
+					s	+= str(RFIFOL(fd,64+i*26+d))
+				s	+= " }"
+				d	+= c * 12
+				i += 1
+			aid = self.tmp_id
+			p = self.mapport.GetValue()
+			if aid == 0:
+				m = chrdata["mapname"]
+				self.text.AppendText("-\tbarter\t"+ m[:-4] +"#callbarter\t-1," +s +"\t// selfpos("+ str(chrdata["x"])+", "+ str(chrdata["y"]) +")\n")
+			else:
+				if p in npcdata.keys():
+					if aid in npcdata[p].keys():
+						self.text.AppendText(npcdata[p][aid][NPC.MAP]+","+ str(npcdata[p][aid][NPC.POSX]) + ","+ str(npcdata[p][aid][NPC.POSY]) +","+ str(npcdata[p][aid][NPC.POSD]) +"\tbarter\t"+ str(npcdata[p][aid][NPC.NAME]) +"\t"+ str(npcdata[p][aid][NPC.CLASS]) + "," +s +"\t// "+ str(aid) +"\n")
 			self.tmp_id = 0
 		elif num == 0xba2:	#messize
 			height  = RFIFOL(fd,2)

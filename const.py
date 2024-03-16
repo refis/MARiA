@@ -801,7 +801,7 @@ SKILLNAME = {
 	775: "NPC_SEEDTRAP",
 	776: "NPC_DEADLYCURSE",
 	777: "NPC_RANDOMBREAK",
-	778: "NPC_STRIP_SHADOW",
+	778: "Mストリップシャドウ",
 	779: "ワイドデッドリーカース",
 	780: "ケーンオブイビルアイ",
 	781: "NPC_CURSE_OF_RED_CUBE",

@@ -16,7 +16,7 @@ import const
 
 MARiA_MAJOR_VERSION = 0
 MARiA_MINOR_VERSION = 1
-MARiA_MAJOR_REVISION = 3
+MARiA_MAJOR_REVISION = 4
 MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
 
 Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
@@ -1069,6 +1069,19 @@ class MARiA_Frame(wx.Frame):
 			if self.scripttimer.IsChecked() == 1:
 				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("progressbar {};\t//color={}\n".format(casttime,color))
+		elif num == 0x9d1:	#progressbar_unit
+			aid			= RFIFOL(fd,2)
+			color		= RFIFOL(fd,6)
+			casttime	= RFIFOL(fd,10)
+			color = format(color, '#08x')
+			p		= self.mapport.GetValue()
+			if p in npcdata.keys():
+				if aid in npcdata[p].keys():
+					if self.scripttimer.IsChecked() == 1:
+						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
+					self.text.AppendText("progressbar {},\"{}\";\t//color={}\n".format(casttime,npcdata[p][aid][NPC.NAME],color))
+				else:
+					self.text.AppendText("progressbar {};\t//color={}, aid={}\n".format(casttime,color,aid))
 		elif num == 0x1ff:	#blown
 			aid	= RFIFOL(fd,2)
 			x	= RFIFOW(fd,6)
@@ -1470,7 +1483,8 @@ class MARiA_Frame(wx.Frame):
 				if aid in mobdata[p].keys():
 					if self.scripttimer.IsChecked() == 1:
 						self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
-					self.text.AppendText("@mob_defeated(\"{}\"({}), type: {})\n".format(mobdata[p][aid][MOB.NAME], aid, type))
+					if type != 0:
+						self.text.AppendText("@mob_defeated(\"{}\"({}), type: {})\n".format(mobdata[p][aid][MOB.NAME], aid, type))
 					if type == 1:
 						mobdata[p][aid][MOB.DEADTICK] = gettick()
 		elif num == 0xacc:	#gainexp
@@ -1966,6 +1980,11 @@ class MARiA_Frame(wx.Frame):
 					self.text.AppendText("getitem {},{};\n".format(itemid,amount))
 		elif num == 0xb41:	#getitem
 			upgrade = 0
+			refine	= 0
+			card1	= 0
+			card2	= 0
+			card3	= 0
+			card4	= 0
 			idx		= RFIFOW(fd,2)
 			amount	= RFIFOW(fd,4)
 			itemid	= RFIFOL(fd,6)
@@ -2379,13 +2398,19 @@ class MARiA_Frame(wx.Frame):
 		elif num == 0xba2:	#messize
 			height  = RFIFOL(fd,2)
 			width   = RFIFOL(fd,6)
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("messize {},{};\n".format(height,width))
 		elif num == 0xba3 or num == 0xbb5:	#dialogpos
 			x = RFIFOL(fd,2)
 			y = RFIFOL(fd,6)
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("mespos {},{};\n".format(x,y))
 		elif num == 0xba1:	#mesalign
 			align = RFIFOB(fd,2)
+			if self.scripttimer.IsChecked() == 1:
+				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("mesalign {};\n".format(align))
 		elif Configuration['Show_OtherPacket'] == 1:
 			self.text.AppendText("@packet "+ n + ".\n")

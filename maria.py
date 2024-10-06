@@ -16,7 +16,7 @@ import const
 
 MARiA_MAJOR_VERSION = 0
 MARiA_MINOR_VERSION = 1
-MARiA_MAJOR_REVISION = 4
+MARiA_MAJOR_REVISION = 7
 MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
 
 Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1}
@@ -210,6 +210,7 @@ class MARiA_Frame(wx.Frame):
 	bufcnt		= 0
 	prev_num	= 0
 	logout_mode	= 0
+	allowcutin	= 0
 	tmp_id		= 0
 	timerlock	= 0
 	timerlockcnt= 0
@@ -719,10 +720,13 @@ class MARiA_Frame(wx.Frame):
 					i = 83
 					s = fd[i*2:p_len*2]
 					opt = ""
+					opt2 = ""
 					if option == 2:
-						opt = "(hide)"
+						opt  = "(hide)"
+						opt2 = "(HIDDEN)"
 					elif option == 4:
-						opt = "(cloaking)"
+						opt  = "(cloaking)"
+						opt2 = "(CLOAKED)"
 					s_len = len(s)
 					if s_len > 46 and ((s[-2:] >= '80' and s[-2:] <= '9f') or (s[-2:] >= 'e0' and s[-2:] <= '9e')):
 						s = s[:-2]
@@ -769,10 +773,10 @@ class MARiA_Frame(wx.Frame):
 									npcdata[p][aid][NPC.OPTION] = option
 									self.text.AppendText(s2+"\n")
 							else:
-								self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\t" +s3+ "\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
+								self.text.AppendText("{},{},{},{}\t{}{}\t{}\t{},{{/* {} {}*/}}\n".format(m,x,y,dir,s3,opt2,s,view,aid,opt))
 								npcdata[p][aid] = [m,x,y,dir,s,view,option]
 						else:
-							self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\t" +s3+ "\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
+							self.text.AppendText("{},{},{},{}\t{}{}\t{}\t{},{{/* {} {}*/}}\n".format(m,x,y,dir,s3,opt2,s,view,aid,opt))
 							npcdata[p] = { aid: [m,x,y,dir,s,view,option] }
 						if type==12:
 							self.text.AppendText("setnpcspeed {},\"{}\";\t// {}\n".format(speed,s,aid))
@@ -790,10 +794,13 @@ class MARiA_Frame(wx.Frame):
 				dir		= RFIFOPOSD(fd,63)
 				if type==5 or type==6 or type==12:
 					opt = ""
+					opt2 = ""
 					if option == 2:
-						opt = "(hide)"
+						opt  = "(hide)"
+						opt2 = "(HIDDEN)"
 					elif option == 4:
-						opt = "(cloaking)"
+						opt  = "(cloaking)"
+						opt2 = "(CLOAKED)"
 					if p_len == 84:
 						s = " "
 					else:
@@ -845,7 +852,7 @@ class MARiA_Frame(wx.Frame):
 									npcdata[p][aid][NPC.OPTION] = option
 									self.text.AppendText(s2+"\n")
 							else:
-								self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\t" +s3+ "\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
+								self.text.AppendText("{},{},{},{}\t{}{}\t{}\t{},{{/* {} {}*/}}\n".format(m,x,y,dir,s3,opt2,s,view,aid,opt))
 								npcdata[p][aid] = [m,x,y,dir,s,view,option]
 								if view < 45 or (view >= 4000 and view <= 4300):
 									hair	= RFIFOW(fd,25)
@@ -860,7 +867,7 @@ class MARiA_Frame(wx.Frame):
 									self.text.AppendText("// Name Class Sex ClothColor HairStyle HairColor Helm1 Helm2 Helm3 robe style.\n")
 									self.text.AppendText("OnInit:\n\tsetnpcdisplay \"{}\",{},{},{},{},{},{},{},{},{},{};\t// {}\n".format(npcdata[p][aid][NPC.NAME], view, sex, c_color, hair, h_color, top, mid, bottom, robe, style, aid))
 						else:
-							self.text.AppendText(m+","+ str(x) + ","+ str(y) +","+ str(dir) +"\t" +s3+ "\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
+							self.text.AppendText("{},{},{},{}\t{}{}\t{}\t{},{{/* {} {}*/}}\n".format(m,x,y,dir,s3,opt2,s,view,aid,opt))
 							npcdata[p] = { aid: [m,x,y,dir,s,view,option] }
 						if type==12:
 							self.text.AppendText("setnpcspeed {},\"{}\";\t// {}\n".format(speed,s,aid))
@@ -879,10 +886,13 @@ class MARiA_Frame(wx.Frame):
 					i = 90
 					s = fd[i*2:p_len*2]
 					opt = ""
+					opt2 = ""
 					if option == 2:
-						opt = "(hide)"
+						opt  = "(hide)"
+						opt2 = "(HIDDEN)"
 					elif option == 4:
-						opt = "(cloaking)"
+						opt  = "(cloaking)"
+						opt2 = "(CLOAKED)"
 					s_len = len(s)
 					if s_len > 46 and ((s[-2:] >= '80' and s[-2:] <= '9f') or (s[-2:] >= 'e0' and s[-2:] <= '9e')):
 						s = s[:-2]
@@ -917,10 +927,10 @@ class MARiA_Frame(wx.Frame):
 							if aid in npcdata[p].keys():
 								pass
 							else:
-								self.text.AppendText(m+","+ str(x) + ","+ str(y) +",0\tscript\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
+								self.text.AppendText("{},{},{},0\tscript{}\t{}\t{},{{/* {} {}*/}}\n".format(m,x,y,opt2,s,view,aid,opt))
 								npcdata[p][aid] = [m,x,y,0,s,view,option]
 						else:
-							self.text.AppendText(m+","+ str(x) + ","+ str(y) +",0\tscript\t"+ s +"\t"+ str(view) +",{/* "+ str(aid) +" "+opt+"*/}\n")
+							self.text.AppendText("{},{},{},0\tscript{}\t{}\t{},{{/* {} {}*/}}\n".format(m,x,y,opt2,s,view,aid,opt))
 							npcdata[p] = { aid: [m,x,y,0,s,view,option] }
 					elif type == 12:
 						if p in npcdata.keys():
@@ -963,7 +973,10 @@ class MARiA_Frame(wx.Frame):
 		elif num == 0x0b6:	#close
 			if self.scripttimer.IsChecked() == 1:
 				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
-			self.text.AppendText("close;\n")
+			if self.allowcutin == 1:
+				self.text.AppendText("close2;\n")
+			else:
+				self.text.AppendText("close;\n")
 		elif num == 0x8d6:	#clear
 			if self.scripttimer.IsChecked() == 1:
 				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
@@ -998,6 +1011,10 @@ class MARiA_Frame(wx.Frame):
 			if self.scripttimer.IsChecked() == 1:
 				self.text.AppendText('/* ' + str(datetime.now().time()) + ' */\t')
 			self.text.AppendText("cutin \""+s+"\", "+str(type)+";\n")
+			if type != 255:
+				self.allowcutin = 1
+			else:
+				self.allowcutin = 0
 		elif num == 0x1b0:	#classchange
 			aid		= RFIFOL(fd,2)
 			type	= RFIFOB(fd,6)

@@ -11,6 +11,7 @@ class NPC(IntEnum):
 	NAME = 4
 	CLASS = 5
 	OPTION = 6
+	EVENT = 7
 
 class MOB(IntEnum):
 	MAP = 0

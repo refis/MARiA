@@ -16,7 +16,7 @@ import const
 
 MARiA_MAJOR_VERSION = 0
 MARiA_MINOR_VERSION = 1
-MARiA_MAJOR_REVISION = 9
+MARiA_MAJOR_REVISION = 10
 MARiA_VERSION = "v{}.{}.{}".format(MARiA_MAJOR_VERSION, MARiA_MINOR_VERSION, MARiA_MAJOR_REVISION)
 
 Configuration = {"Window_XPos": 0, "Window_YPos": 0, "Width": 800, "Height": 500, "Show_OtherPacket": 1, "AutoSaveFile": 0, "AutoLoadFile": 0}
@@ -241,6 +241,7 @@ class MARiA_Frame(wx.Frame):
 		menubar = wx.MenuBar()
 		file = wx.Menu()
 		edit = wx.Menu()
+		view = wx.Menu()
 
 		copybinary = file.Append(-1, "バイナリ窓コピー")
 		copyscript = file.Append(-1, "スクリプト窓コピー")
@@ -291,8 +292,12 @@ class MARiA_Frame(wx.Frame):
 		mobskilllist = edit.Append(-1, "モンスタースキル情報統計")
 		self.Bind(wx.EVT_MENU, self.OnMobSkillList, mobskilllist)
 
+		dataview = view.Append(-1, "データ表示")
+		self.Bind(wx.EVT_MENU, self.OnDataList, dataview)
+
 		menubar.Append(file, '&File')
 		menubar.Append(edit, '&Edit')
+		menubar.Append(view, '&View')
 		self.SetMenuBar(menubar)
 
 		sp = wx.SplitterWindow(self,-1, style=wx.SP_LIVE_UPDATE)
@@ -573,6 +578,10 @@ class MARiA_Frame(wx.Frame):
 			mobdata = pickle.load(f)
 		with open('warp.md', 'rb') as f:
 			warpnpc = pickle.load(f)
+
+	def OnDataList(self, event):
+		if self.FindWindowByName('データリスト') is None:
+			MARiA_DataList()
 
 	def CheckNearNPC(self, m, x, y):
 		p = self.mapport.GetValue()
@@ -2441,6 +2450,57 @@ class MARiA_Frame(wx.Frame):
 			self.text.AppendText("mesalign {};\n".format(align))
 		elif Configuration['Show_OtherPacket'] == 1:
 			self.text.AppendText("@packet "+ n + ".\n")
+
+class MARiA_DataList(wx.Frame):
+	def __init__(self):
+		wx.Frame.__init__(
+			self, 
+			None, 
+			-1,
+			"データリスト")
+		panel = wx.Panel(self, wx.ID_ANY)
+
+		vbox = wx.BoxSizer(wx.VERTICAL)
+		hbox = wx.BoxSizer(wx.HORIZONTAL)
+
+		call_npc = wx.Button(panel, wx.ID_ANY, 'NPC')
+		call_npc.Bind(wx.EVT_BUTTON, self.OnCallNPC)
+		hbox.Add(call_npc, 1, wx.EXPAND)
+
+		call_mob = wx.Button(panel, wx.ID_ANY, 'Monster')
+		call_mob.Bind(wx.EVT_BUTTON, self.OnCallMonster)
+		hbox.Add(call_mob, 1, wx.EXPAND)
+
+		call_skill = wx.Button(panel, wx.ID_ANY, 'MobSkill')
+		call_skill.Bind(wx.EVT_BUTTON, self.OnCallMobSkill)
+		hbox.Add(call_skill, 1, wx.EXPAND)
+		vbox.Add(hbox, 0, wx.LEFT | wx.RIGHT | wx.TOP, 2)
+
+		self.listbox = wx.ListBox(panel, wx.ID_ANY, style=wx.LB_EXTENDED | wx.LB_HSCROLL | wx.LB_NEEDED_SB)
+		vbox.Add(self.listbox, 1, wx.EXPAND)
+
+		panel.SetSizer(vbox)
+
+		self.OnCallNPC(1)
+
+		self.Show()
+
+	def OnCallNPC(self,event):
+		self.listbox.Clear()
+		for p in npcdata.keys():
+			tmp_npcdata = sorted(npcdata[p])
+			for aid in tmp_npcdata:
+				if aid > 0:
+					self.listbox.Append(npcdata[p][aid][NPC.MAP]+","+str(npcdata[p][aid][NPC.POSX])+","+str(npcdata[p][aid][NPC.POSY])+","+str(npcdata[p][aid][NPC.POSD])+"　"+npcdata[p][aid][NPC.NAME]+"　"+str(npcdata[p][aid][NPC.CLASS])+",{/* "+str(aid)+" */}\n")
+
+	def OnCallMonster(self,event):
+		self.listbox.Clear()
+		# ToDo
+
+	def OnCallMobSkill(self,event):
+		self.listbox.Clear()
+		# ToDo
+
 
 app = wx.App()
 read_packet_db()

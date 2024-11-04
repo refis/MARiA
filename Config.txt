@@ -1,7 +1,7 @@
-Window_XPos	215
+Window_XPos	124
 Window_YPos	98
 Width	922
 Height	922
 Show_OtherPacket	0
-AutoSaveFile	1
-AutoLoadFile	1
+AutoSaveFile	0
+AutoLoadFile	0
